@@ -1,0 +1,5 @@
+{ "jsonrpc": "2.0", "result": { "return": "Success", "status": "online" }, "id": 0 }
+{ "jsonrpc": "2.0", "result": { "return": "NotStarted" }, "id": 1 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "status": "ready" }, "id": 2 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "version": 1 }, "id": 3 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "task": "none" }, "id": 4 }

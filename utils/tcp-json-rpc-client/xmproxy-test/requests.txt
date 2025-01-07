@@ -1,0 +1,5 @@
+{ "jsonrpc": "2.0", "method": "get_online_status", "id": 0 }
+{ "jsonrpc": "2.0", "method": "get_settings_status", "id": 1 }
+{ "jsonrpc": "2.0", "method": "get_ready_status", "id": 2 }
+{ "jsonrpc": "2.0", "method": "get_rpc_srv_version", "id": 3 }
+{ "jsonrpc": "2.0", "method": "get_async_task", "id": 4 }
