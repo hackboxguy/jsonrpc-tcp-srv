@@ -1,0 +1,7 @@
+{ "jsonrpc": "2.0", "method": "get_rpc_srv_version", "id": 0 }
+{ "jsonrpc": "2.0", "method": "get_device_operation", "id": 1 }
+{ "jsonrpc": "2.0", "method": "get_debug_logging", "id": 2 }
+{ "jsonrpc": "2.0", "method": "get_log_count", "id": 3 }
+{ "jsonrpc": "2.0", "method": "get_async_task", "id": 4 }
+{ "jsonrpc": "2.0", "method": "get_boot_system", "id": 5 }
+{ "jsonrpc": "2.0", "method": "get_ready_status", "id": 6 }

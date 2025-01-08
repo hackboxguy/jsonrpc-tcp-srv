@@ -1,0 +1,40 @@
+#!/bin/sh /etc/rc.common
+# "new(er)" style init script
+# Look at /lib/functions/service.sh on a running system for explanations of what other SERVICE_
+# options you can use, and when you might want them.
+
+START=71
+APP=sysmgr
+SERVICE_WRITE_PID=1
+SERVICE_DAEMONIZE=1
+
+XMPP_FILE_DIR=/etc/xmproxy
+DISPTYPE_FILE="$XMPP_FILE_DIR/display-type.txt"
+
+start() {
+
+	#a5v11 heats up when all its switch PORTS are on, hence switch off the ports
+	BDTYPE=$(cat /tmp/BrBoxDevType.txt)
+	if [ "A5_V11" = $BDTYPE ]; then
+		swconfig dev switch0 port 1 set disable 1
+		swconfig dev switch0 port 2 set disable 1
+		swconfig dev switch0 port 3 set disable 1
+		swconfig dev switch0 port 4 set disable 1
+		swconfig dev switch0 set apply
+	fi
+
+	#auto detect
+	i2cdetect  -r -y 0 | grep 3c > /dev/null && DISPTYPE=ssd1306_128x64
+	i2cdetect  -r -y 0 | grep 27 > /dev/null && DISPTYPE=1602_pcf
+
+	#overridd if specified by user
+	if [ -f "$DISPTYPE_FILE" ]; then
+		DISPTYPE=$(cat $DISPTYPE_FILE)
+	fi
+
+        service_start /opt/fmw/bin/$APP --boardtype=$(cat /tmp/BrBoxDevType.txt) --syscfg=$(cat /etc/sysconfig.txt) --disptype=$DISPTYPE
+}
+
+stop() {
+        service_stop /opt/fmw/bin/$APP
+}

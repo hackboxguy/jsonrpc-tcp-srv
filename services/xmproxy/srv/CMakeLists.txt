@@ -56,6 +56,22 @@ target_include_directories(${COMPONENT_NAME} PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# Find cpp-httplib
+find_path(CPP_HTTPLIB_INCLUDE_DIR httplib.h
+    PATHS
+        /usr/include
+        /usr/local/include
+        ${CMAKE_SOURCE_DIR}/3rd_party/cpp-httplib
+    DOC "Path to cpp-httplib header file"
+)
+if (NOT CPP_HTTPLIB_INCLUDE_DIR)
+    message(FATAL_ERROR "cpp-httplib not found. Please install it using apt install libcpp-httplib-dev")
+else()
+    message(STATUS "Found cpp-httplib: ${CPP_HTTPLIB_INCLUDE_DIR}")
+endif()
+# Add cpp-httplib include directory
+target_include_directories(${COMPONENT_NAME} PRIVATE ${CPP_HTTPLIB_INCLUDE_DIR})
+
 # Specify component's dependencies
 if(WITH_CXMPP_LIB)
   if(WITH_AI_BOT)

@@ -1,0 +1,7 @@
+{ "jsonrpc": "2.0", "result": { "return": "Success", "version": 2 }, "id": 0 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "operation": "idle" }, "id": 1 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "status": "disable" }, "id": 2 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "logcount": 0 }, "id": 3 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "task": "none" }, "id": 4 }
+{ "jsonrpc": "2.0", "result": { "return": "FileOpenErr" }, "id": 5 }
+{ "jsonrpc": "2.0", "result": { "return": "Success", "status": "ready" }, "id": 6 }
