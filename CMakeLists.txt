@@ -19,17 +19,28 @@ add_subdirectory(services)
 add_subdirectory(utils)
 if(RUN_AUTO_TEST)
 install(CODE "
+  # Generate the ANSI escape code for red text
+  string(ASCII 27 ESCAPE)
+  set(RED \"\${ESCAPE}[31m\")  #Red text
+  set(GREEN \"\${ESCAPE}[32m\")   # Green text 
+  set(RESET \"\${ESCAPE}[0m\") #reset color 
+  message(STATUS \"---------Automated Runtime test started---------\")
   message(STATUS \"Starting rpc-servers...\")
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/start-sysmgr.sh\")
   execute_process(COMMAND sleep 2)
-  execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stress-sysmgr.sh\" RESULT_VARIABLE TEST_RESULT)
-  if(TEST_RESULT EQUAL 0)
-    message(STATUS \"stress-sysmgr:pass\")
+  #message(STATUS \"running: CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stress-sysmgr.sh\")
+  execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stress-sysmgr.sh\"
+	 OUTPUT_VARIABLE TEST_OUTPUT
+ 	 RESULT_VARIABLE TEST_RESULT
+ 	)
+  if(NOT TEST_RESULT EQUAL 0) 
+	  message(STATUS \"\${RED}stress-sysmgr:fail!!! \${TEST_OUTPUT}\${RESET}\")
   else()
-    message(STATUS \"stress-sysmgr:fail!!!!!!\")
+	  message(STATUS \"\${GREEN}stress-sysmgr:pass\${RESET}\")
   endif()
   message(STATUS \"Stoping rpc-servers...\")
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stop-sysmgr.sh\")
+  message(STATUS \"---------Automated Runtime test finished--------\")
 ")
 endif()
 

@@ -13,6 +13,14 @@
 #define BUFFER_SIZE 4096
 #define TIMEOUT_SEC 5
 
+// Structure to hold statistics
+struct Statistics {
+  int total_requests;
+  int received_responses;
+  double average_time;
+  int mismatch_count;
+};
+
 // Function to print usage
 void print_usage() {
   std::cerr << "Usage: ./tcp-json-rpc-client --servertcpport=<port> "
@@ -20,6 +28,29 @@ void print_usage() {
                "--repeat=<count>\n";
 }
 
+// Function to output statistics as JSON
+void output_json_stats(const Statistics &stats) {
+  json_object *root = json_object_new_object();
+  json_object_object_add(root, "sent",
+                         json_object_new_int(stats.total_requests));
+  json_object_object_add(root, "received",
+                         json_object_new_int(stats.received_responses));
+  json_object_object_add(root, "averagemicrosec",
+                         json_object_new_double(stats.average_time));
+  json_object_object_add(root, "mismatch",
+                         json_object_new_int(stats.mismatch_count));
+
+  std::cout << json_object_to_json_string_ext(root, JSON_C_TO_STRING_PLAIN)
+            << std::endl;
+  json_object_put(root);
+}
+// Function to output statistics as text
+void output_stats(const Statistics &stats) {
+  std::cout << "sent: " << stats.total_requests << std::endl;
+  std::cout << "received: " << stats.received_responses << std::endl;
+  std::cout << "averagemicrosec: " << stats.average_time << std::endl;
+  std::cout << "mismatch: " << stats.mismatch_count << std::endl;
+}
 // Function to parse command line arguments
 bool parse_arguments(int argc, char *argv[], int &server_port,
                      std::string &requests_file, std::string &responses_file,
@@ -94,13 +125,13 @@ bool compare_json_objects(const std::string &json1, const std::string &json2) {
 }
 
 // Function to send JSON requests and receive responses
-void send_and_receive(int sock, const std::vector<std::string> &requests,
-                      const std::vector<std::string> &responses,
-                      int repeat_count) {
+Statistics send_and_receive(int sock, const std::vector<std::string> &requests,
+                            const std::vector<std::string> &responses,
+                            int repeat_count) {
   std::vector<std::chrono::microseconds> response_times;
-  int total_requests = requests.size() * repeat_count;
-  int received_responses = 0;
-  int current_id = 0; // Sequential ID counter
+  Statistics stats = {0, 0, 0.0, 0};
+  stats.total_requests = requests.size() * repeat_count;
+  int current_id = 0;
 
   for (int repeat_index = 0; repeat_index < repeat_count; ++repeat_index) {
     for (size_t request_index = 0; request_index < requests.size();
@@ -110,14 +141,12 @@ void send_and_receive(int sock, const std::vector<std::string> &requests,
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
-      // Send the request
       if (send(sock, modified_request.c_str(), modified_request.size(), 0) <
           0) {
         std::cerr << "Failed to send request\n";
-        return;
+        return stats;
       }
 
-      // Receive the response
       char buffer[BUFFER_SIZE] = {0};
       fd_set read_fds;
       FD_ZERO(&read_fds);
@@ -136,19 +165,15 @@ void send_and_receive(int sock, const std::vector<std::string> &requests,
           response_times.push_back(duration);
 
           std::string response(buffer, bytes_received);
+          stats.received_responses++;
 
-          // Compare the response with the expected response (ignoring the "id"
-          // field)
           if (!compare_json_objects(response, responses[request_index])) {
-            std::cerr << "Response mismatch for request ID: "
-                      << (current_id - 1) << "\n";
+            stats.mismatch_count++;
           }
-
-          received_responses++;
         }
       } else {
         std::cerr << "Timeout waiting for response\n";
-        return;
+        return stats;
       }
     }
   }
@@ -158,13 +183,12 @@ void send_and_receive(int sock, const std::vector<std::string> &requests,
   for (const auto &time : response_times) {
     total_time += time.count();
   }
-  double average_time = (total_requests > 0)
-                            ? static_cast<double>(total_time) / total_requests
-                            : 0;
+  stats.average_time =
+      (stats.total_requests > 0)
+          ? static_cast<double>(total_time) / stats.total_requests
+          : 0.0;
 
-  std::cout << "Total requests sent: " << total_requests << "\n";
-  std::cout << "Total responses received: " << received_responses << "\n";
-  std::cout << "Average response time: " << average_time << " microseconds\n";
+  return stats;
 }
 
 int main(int argc, char *argv[]) {
@@ -178,7 +202,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Read JSON requests and responses
   auto requests = read_json_requests(requests_file);
   auto responses = read_json_responses(responses_file);
 
@@ -187,20 +210,17 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Validate that the number of requests and responses match
   if (requests.size() != responses.size()) {
     std::cerr << "Error: The number of requests and responses does not match\n";
     return 1;
   }
 
-  // Create a TCP socket
   int sock = socket(AF_INET, SOCK_STREAM, 0);
   if (sock < 0) {
     std::cerr << "Failed to create socket\n";
     return 1;
   }
 
-  // Connect to the server
   struct sockaddr_in server_addr;
   server_addr.sin_family = AF_INET;
   server_addr.sin_port = htons(server_port);
@@ -216,10 +236,18 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Send requests and receive responses
-  send_and_receive(sock, requests, responses, repeat_count);
+  // Get statistics from send_and_receive
+  Statistics stats = send_and_receive(sock, requests, responses, repeat_count);
+
+  // Output JSON formatted statistics
+  // output_json_stats(stats);
+
+  // Output JSON formatted statistics
+  output_stats(stats);
 
   // Close the socket
   close(sock);
-  return 0;
+
+  // Return based on mismatch count
+  return (stats.mismatch_count == 0) ? 0 : 1;
 }
