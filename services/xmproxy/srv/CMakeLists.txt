@@ -5,6 +5,7 @@ set(COMPONENT_NAME xmproxysrv)           # Server name
 set(STARTUP_SCRIPT XmproxyStartupScr)    # Server startup script
 set(WRTSTARTUP_SCRIPT WrtXmproxyStartupScr) # Server startup script for OpenWrt-based system
 set(SYSTEMDSTARTUP_SCRIPT xmproxysrv.service) # Server startup script for systemd-based system
+set(DEFAULT_XMPP_LOGIN_FILE xmpp-login.txt) # Install a sample xmpp-login.txt file(override with actual login)
 set(STARTNUM "74" CACHE STRING "74")     # Init order number of the service
 set(LIB_ADSTTNG AdSttngs)                # Settings library
 set(LIB_ADCOMMN AdCmn)                   # Common library
@@ -56,21 +57,23 @@ target_include_directories(${COMPONENT_NAME} PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# Find cpp-httplib
-find_path(CPP_HTTPLIB_INCLUDE_DIR httplib.h
-    PATHS
-        /usr/include
-        /usr/local/include
-        ${CMAKE_SOURCE_DIR}/3rd_party/cpp-httplib
-    DOC "Path to cpp-httplib header file"
-)
-if (NOT CPP_HTTPLIB_INCLUDE_DIR)
-    message(FATAL_ERROR "cpp-httplib not found. Please install it using apt install libcpp-httplib-dev")
-else()
-    message(STATUS "Found cpp-httplib: ${CPP_HTTPLIB_INCLUDE_DIR}")
+# Find and include cpp-httplib only if WITH_AI_BOT is ON
+if(WITH_AI_BOT)
+  find_path(CPP_HTTPLIB_INCLUDE_DIR httplib.h
+      PATHS
+          /usr/include
+          /usr/local/include
+          ${CMAKE_SOURCE_DIR}/3rd_party/cpp-httplib
+      DOC "Path to cpp-httplib header file"
+  )
+  if (NOT CPP_HTTPLIB_INCLUDE_DIR)
+      message(FATAL_ERROR "cpp-httplib not found. Please install it using apt install libcpp-httplib-dev")
+  else()
+      message(STATUS "Found cpp-httplib: ${CPP_HTTPLIB_INCLUDE_DIR}")
+  endif()
+  # Add cpp-httplib include directory
+  target_include_directories(${COMPONENT_NAME} PRIVATE ${CPP_HTTPLIB_INCLUDE_DIR})
 endif()
-# Add cpp-httplib include directory
-target_include_directories(${COMPONENT_NAME} PRIVATE ${CPP_HTTPLIB_INCLUDE_DIR})
 
 # Specify component's dependencies
 if(WITH_CXMPP_LIB)
@@ -123,6 +126,7 @@ install(TARGETS ${COMPONENT_NAME} DESTINATION bin)
 install(PROGRAMS ${STARTUP_SCRIPT} DESTINATION etc/init.d) # Copy server's startup script to init.d
 install(PROGRAMS ${WRTSTARTUP_SCRIPT} DESTINATION etc/init.d) # Copy server's startup script to init.d
 install(PROGRAMS ${SYSTEMDSTARTUP_SCRIPT} DESTINATION etc/systemd/system) # Copy server's startup script to systemd/system
+install(FILES ${DEFAULT_XMPP_LOGIN_FILE} DESTINATION etc/xmproxy)
 if(INSTALL_MY_HEADERS)
   install(FILES ${INCFILES} DESTINATION include)
 endif()

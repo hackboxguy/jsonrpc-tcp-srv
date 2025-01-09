@@ -1,0 +1,3 @@
+user: example-bot@exampleserver
+pw: supersecretpw;-)
+adminbuddy: example-buddy@exampleserver

@@ -218,9 +218,14 @@ int main(int argc, const char *argv[]) {
 
   // start listening for rpc-commands
   RpcMgr.AttachHeartBeat(&AppTimer); // attach 100ms heartbeat to ADJsonRpcMgr
+#ifdef DEBUG_TEST_MODE
+  RpcMgr.SupportShutdownRpc(
+      true); // in debug test mode, allow server shutdown over rpc call
+#else
   RpcMgr.SupportShutdownRpc(
       false); // this is a system-manager, needs to be alive all the time, hence
               // dont support shutdown via rpc
+#endif
   RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
                CmdLine.get_emulation_mode());
 
