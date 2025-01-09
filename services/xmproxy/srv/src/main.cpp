@@ -59,6 +59,7 @@ int main(int argc, const char *argv[]) {
   XmpManager.SetUpdateurlFilePath(
       CmdLine.get_updateurl_filepath());                // updateurl filepath
   XmpManager.SetAiAgentUrl(CmdLine.get_ai_agent_url()); // ai-agent-url
+  XmpManager.SetAiModel(CmdLine.get_ai_model());        // ai-model
   // attach rpc classes to ADJsonRpcMgr
   ADJsonRpcMgr RpcMgr(SRC_CONTROL_VERSION, dbglog, &DevInfo); // main rpc
                                                               // handler

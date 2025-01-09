@@ -214,6 +214,7 @@ class XmppMgr : public ADXmppConsumer,
   std::string XmppBotNameFilePath;
   std::string XmppNetInterface;
   std::string AiAgentUrl;
+  std::string AiModel;
 #ifdef USE_CXMPP_LIB
   CXmppProxy XmppProxy; // xmpp client
 #else
@@ -373,6 +374,7 @@ public:
   RPC_SRV_RESULT SendMessage(std::string msg);
   void SetDebugLog(bool log);
   void SetAiAgentUrl(std::string url);
+  void SetAiModel(std::string model);
   int AttachHeartBeat(ADTimer *pTimer);
   RPC_SRV_RESULT RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID,
                                      std::string to); // called by eventHandler

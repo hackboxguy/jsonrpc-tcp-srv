@@ -135,6 +135,7 @@ XmppMgr::XmppMgr() //: AckToken(0)
   UpdateUrlFile = "";
   DebugLog = false;
   AiAgentUrl = "";
+  AiModel = "llama2:7b"; // choose as default
 #ifdef USE_AI_BOT
   botcli = NULL;
 #endif
@@ -228,6 +229,8 @@ void XmppMgr::SetAiAgentUrl(std::string url) {
       MAX_INFERENCE_TIME, 0); // time taken to serve the query from the ai model
 #endif
 }
+/* ------------------------------------------------------------------------- */
+void XmppMgr::SetAiModel(std::string model) { AiModel = model; }
 /* ------------------------------------------------------------------------- */
 void XmppMgr::SetOpenWrtCmdGroupSts(bool sts) {
   int total_cmds = sizeof(xmproxy_cmd_table) / sizeof(XMPROXY_CMD_TABLE);
@@ -2075,6 +2078,8 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_set_display_backlight(std::string msg) {
 /* ------------------------------------------------------------------------- */
 // removes first $ sign and expands the argument with alias if found
 RPC_SRV_RESULT XmppMgr::xpandarg(std::string &cmdArg) {
+  if (cmdArg.size() <= 0)
+    return RPC_SRV_RESULT_FAIL; // dont do anything
   if (cmdArg.at(0) == '$') {
     cmdArg.erase(0, 1); // remote first $ char
     transform(cmdArg.begin(), cmdArg.end(), cmdArg.begin(), ::tolower);
@@ -2293,7 +2298,9 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_add_buddy(std::string to, std::string message,
 std::string XmppMgr::generate_ai_response(std::string &prompt) {
 #ifdef USE_AI_BOT
   json_object *payload = json_object_new_object();
-  json_object_object_add(payload, "model", json_object_new_string("llama2:7b"));
+  json_object_object_add(
+      payload, "model",
+      json_object_new_string(AiModel.c_str())); // e.g llama2:7b
   json_object_object_add(payload, "prompt",
                          json_object_new_string(prompt.c_str()));
   // json_object_object_add(payload, "stream", json_object_new_string("false"));

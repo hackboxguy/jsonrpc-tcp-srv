@@ -10,6 +10,7 @@ typedef enum XMPROXY_CMDLINE_OPT_T {
   XMPROXY_CMDLINE_OPT_NETINTERFACE, // iface
   XMPROXY_CMDLINE_OPT_UPDATEURL,    // updateurl
   XMPROXY_CMDLINE_OPT_AIAGENT,      // aiagent
+  XMPROXY_CMDLINE_OPT_AIMODEL,      // aimodel
   XMPROXY_CMDLINE_OPT_UNKNOWN,
   XMPROXY_CMDLINE_OPT_NONE
 } XMPROXY_CMDLINE_OPT;
@@ -20,6 +21,7 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
     : CmdlineHelper(cmdline_mode) {
   NetInterface = "";
   AiAgentUrl = "";
+  AiModel = "";
   port_number = portnum;
   strcpy(version_number, version_str);
   CmdlineHelper.attach_helper(this);
@@ -52,10 +54,14 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
                                      XMPROXY_CMDLINE_OPT_UPDATEURL);
   CmdlineHelper.insert_help_entry(
       (char *)"--updateurl=filepath (sysupdate fmw-file url)");
+
   CmdlineHelper.insert_options_entry((char *)"aiagent", optional_argument,
                                      XMPROXY_CMDLINE_OPT_AIAGENT);
   CmdlineHelper.insert_help_entry(
       (char *)"--aiagent=url (ollama AI agent url)");
+  CmdlineHelper.insert_help_entry((char *)"--aimodel=model (model to connect)");
+  CmdlineHelper.insert_options_entry((char *)"aimodel", optional_argument,
+                                     XMPROXY_CMDLINE_OPT_AIMODEL);
 
   strcpy(LoginFilePath, XMPROXY_DEFAULT_LOGIN_FILE_PATH);
   UsbGSMSts = false;
@@ -131,6 +137,13 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
       AiAgentUrl = "";
     else
       AiAgentUrl = sub_arg;
+    break;
+  case XMPROXY_CMDLINE_OPT_AIMODEL:
+    if (CmdlineHelper.get_next_subargument(&sub_arg) ==
+        0) // no aimodel passed by user
+      AiModel = "";
+    else
+      AiModel = sub_arg;
     break;
   default:
     return 0;
@@ -217,4 +230,6 @@ std::string MyCmdline::get_updateurl_filepath() {
 }
 /*****************************************************************************/
 std::string MyCmdline::get_ai_agent_url() { return AiAgentUrl; }
+/*****************************************************************************/
+std::string MyCmdline::get_ai_model() { return AiModel; }
 /*****************************************************************************/
