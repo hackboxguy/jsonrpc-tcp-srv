@@ -36,6 +36,7 @@ install(CODE "
   set(RESET \"\${ESCAPE}[0m\") #reset color 
   message(STATUS \"---------Automated Runtime test started---------\")
   message(STATUS \"Starting rpc-servers...\")
+  #####xmproxysrv#########
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/start-sysmgr.sh\")
   execute_process(COMMAND sleep 2)
   #message(STATUS \"running: CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stress-sysmgr.sh\")
@@ -48,7 +49,21 @@ install(CODE "
   else()
 	  message(STATUS \"\${GREEN}stress-sysmgr:pass\${RESET}\")
   endif()
+  #####xmproxysrv#########
+  execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/start-xmproxysrv.sh\")
+  execute_process(COMMAND sleep 3)
+  execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stress-xmproxysrv.sh\"
+         OUTPUT_VARIABLE TEST_OUTPUT
+         RESULT_VARIABLE TEST_RESULT
+        )
+  if(NOT TEST_RESULT EQUAL 0)
+          message(STATUS \"\${RED}stress-xmproxysrv:fail!!! \${TEST_OUTPUT}\${RESET}\")
+  else()
+          message(STATUS \"\${GREEN}stress-xmproxysrv:pass\${RESET}\")
+  endif()
+
   message(STATUS \"Stoping rpc-servers...\")
+  execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stop-xmproxysrv.sh\")
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stop-sysmgr.sh\")
   message(STATUS \"---------Automated Runtime test finished--------\")
 ")
