@@ -21,6 +21,8 @@ int DispCtrlRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
     return json_to_bin_backlight_get(pReq);
   case EJSON_SYSMGR_RPC_DISP_SET_BKLT:
     return json_to_bin_backlight_set(pReq);
+  default:
+    return -1;
   }
   return -1;
 }
@@ -36,6 +38,8 @@ int DispCtrlRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
     return bin_to_json_backlight_get(pReq);
   case EJSON_SYSMGR_RPC_DISP_SET_BKLT:
     return bin_to_json_backlight_set(pReq);
+  default:
+    return -1;
   }
   return -1;
 }
@@ -52,6 +56,8 @@ int DispCtrlRpc::ProcessWork(JsonDataCommObj *pReq, int index,
     return process_backlight_get(pReq, pDataCache);
   case EJSON_SYSMGR_RPC_DISP_SET_BKLT:
     return process_backlight_set(pReq, pDataCache);
+  default:
+    return -1;
   }
   return 0;
 }

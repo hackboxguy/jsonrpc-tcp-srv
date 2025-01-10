@@ -302,14 +302,14 @@ int ADSerial::process_received_data(unsigned char *data, int len) {
 int ADSerial::read_serial_data(int fd, unsigned char *buf, int size) {
   int n;
 #ifndef __STRICT_ANSI__
-  if (size > SSIZE_MAX)
-    size = (int)SSIZE_MAX;
+  if (size > INT_MAX)
+    size = INT_MAX;
 #else
   if (size > MAX_RX_TX_CHUNK_SZ)
     size = MAX_RX_TX_CHUNK_SZ;
 #endif
   n = read(fd, buf, size);
-  return (n);
+  return n;
 }
 int ADSerial::write_serial_data(int fd, unsigned char *data, int bytesToSend) {
   int writtenBytes = 0;

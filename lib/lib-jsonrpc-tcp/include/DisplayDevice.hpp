@@ -47,7 +47,7 @@ typedef enum ADLIB_DISPLAY_TYPE_T {
 class DisplayDevice : public I2CBusAccess {
 public:
   DisplayDevice(std::string devnode);
-  ~DisplayDevice();
+  virtual ~DisplayDevice();
   virtual RPC_SRV_RESULT init_display() = 0;
   virtual RPC_SRV_RESULT clear_display() = 0;
   virtual RPC_SRV_RESULT

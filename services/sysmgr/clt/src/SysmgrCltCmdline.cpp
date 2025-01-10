@@ -432,13 +432,16 @@ int SysmgrCltCmdline::run_get_info_command(
       pCmdObj->first_arg_param_value, pCmdObj->second_arg_param_name,
       pCmdObj->second_arg_param_value, pCmdObj->third_arg_param_name,
       pCmdObj->third_arg_param_value);
-  sprintf(pCmdObj->fourth_arg_param_value, "%s:%s,%s:%s,%s:%s",
-          pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
-          pCmdObj->second_arg_param_name, pCmdObj->second_arg_param_value,
-          pCmdObj->third_arg_param_name, pCmdObj->third_arg_param_value);
-  pOrig->log_print_message(pSrvSockConn, pCmdObj->get_rpc_name,
-                           RPC_SRV_ACT_READ, pCmdObj->result, pOutMsgList,
-                           pCmdObj->fourth_arg_param_value);
+  int len =
+      snprintf(pCmdObj->fourth_arg_param_value,
+               sizeof(pCmdObj->fourth_arg_param_value), "%s:%s,%s:%s,%s:%s",
+               pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
+               pCmdObj->second_arg_param_name, pCmdObj->second_arg_param_value,
+               pCmdObj->third_arg_param_name, pCmdObj->third_arg_param_value);
+  if (len < sizeof(pCmdObj->fourth_arg_param_value))
+    pOrig->log_print_message(pSrvSockConn, pCmdObj->get_rpc_name,
+                             RPC_SRV_ACT_READ, pCmdObj->result, pOutMsgList,
+                             pCmdObj->fourth_arg_param_value);
   return 0;
 }
 /* ------------------------------------------------------------------------- */

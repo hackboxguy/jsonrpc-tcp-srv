@@ -353,6 +353,7 @@ DisplayDevice *low_memory_device_special_action(std::string sysconf,
   pDevice->init_display();
   pDevice->clear_display();
   char msg[255];
+  int written;
 
   //////////////line-1 ip-address///////////////
   ADSysInfo SysInfo; // lib-class for reading cpu-info and system-info
@@ -360,14 +361,14 @@ DisplayDevice *low_memory_device_special_action(std::string sysconf,
   char mac[512];
   char ip[512];
   if (SysInfo.read_network_info((char *)"eth0", mac, ip, netmask) == 0)
-    sprintf(msg, "%s", ip);
+    written = snprintf(msg, sizeof(msg), "%s", ip);
   else {
     // if network is not connected, use ifconfig method
     if (SysInfo.read_network_info_ifconfig((char *)"eth0", mac, ip, netmask) ==
         0)
-      sprintf(msg, "ip-%s", ip);
+      written = snprintf(msg, sizeof(msg), "ip-%s", ip);
     else
-      sprintf(msg, "ip-not-available");
+      written = snprintf(msg, sizeof(msg), "ip-not-available");
   }
   pDevice->print_line(msg, DISPLAY_LINE_1);
 

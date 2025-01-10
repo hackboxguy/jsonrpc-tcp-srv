@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.14)
 set(PROJECT_NAME BrBoxComponents)
 project(${PROJECT_NAME})
+
+# Enable warnings as errors globally for C++ projects
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+# Enable warnings as errors globally for C projects
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
+
 set(ONION_USE_SQLITE3 FALSE CACHE BOOL "Enable or disable SQLite3 support in Onion")
 set(ONION_EXAMPLES FALSE CACHE BOOL "Enable or disable building examples of Onion")
 option(INSTALL_CLIENT "Install client binary" ON)

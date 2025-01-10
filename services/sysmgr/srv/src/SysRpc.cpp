@@ -765,6 +765,7 @@ int SysRpc::process_set_fmwupdate(JsonDataCommObj *pReq,
 RPC_SRV_RESULT
 SysRpc::process_async_set_fmwupdate(SYSMGR_FMWUPDATE_PACKET *pPacket) {
   char cmdline[512];
+  int written;
   ADSysInfo SysInfo;
   RPC_SRV_RESULT ret_val = RPC_SRV_RESULT_ARG_ERROR;
   switch (pPacket->module) {
@@ -773,15 +774,18 @@ SysRpc::process_async_set_fmwupdate(SYSMGR_FMWUPDATE_PACKET *pPacket) {
                           // result has already been delivered
       // sprintf(cmdline,"sleep 2;%s
       // %s","sysupgrade",pPacket->cmn_fname_ver_str);
-      sprintf(cmdline, "sleep 2;%s -u %s > /tmp/update.result",
-              MIPS_UPDATE_TOOL, pPacket->cmn_fname_ver_str);
+      written = snprintf(cmdline, sizeof(cmdline),
+                         "sleep 2;%s -u %s > /tmp/update.result",
+                         MIPS_UPDATE_TOOL, pPacket->cmn_fname_ver_str);
     else
-      sprintf(cmdline, "%s -u %s", SYSMGR_UPDATE_TOOL,
-              pPacket->cmn_fname_ver_str);
-    ret_val = SysInfo.run_shell_script(
-        cmdline, get_emulation_flag()); // backup-fmw will be updated
-    bkup_fmwver_updated =
-        false; // re-read bkup-fmw-version when fmw-version-rpc is called
+      written = snprintf(cmdline, sizeof(cmdline), "%s -u %s",
+                         SYSMGR_UPDATE_TOOL, pPacket->cmn_fname_ver_str);
+    if (written < sizeof(cmdline)) {
+      // backup-fmw will be updated
+      ret_val = SysInfo.run_shell_script(cmdline, get_emulation_flag());
+      // re-read bkup-fmw-version when fmw-version-rpc is called
+      bkup_fmwver_updated = false;
+    }
     break;
   default:
     break;
@@ -847,21 +851,23 @@ RPC_SRV_RESULT
 SysRpc::process_async_download_file(SYSMGR_DOWNLOAD_FILE_PACKET *pPacket,
                                     EJSON_SYSMGR_RPC_TYPES command) {
   char cmdline[512];
+  int written;
   ADSysInfo SysInfo;
   RPC_SRV_RESULT ret_val = RPC_SRV_RESULT_ARG_ERROR;
   ADCMN_DEV_INFO *pDevInfo = (ADCMN_DEV_INFO *)pDataCache->pDevInfo;
   switch (command) {
   case EJSON_SYSMGR_RPC_SET_DOWNLOADFTP:
     if (pDevInfo->BoardType == ADCMN_BOARD_TYPE_GL_MT300NV2)
-      sprintf(
-          cmdline, "wget %s -O %s", pPacket->srcurl,
+      written = snprintf(
+          cmdline, sizeof(cmdline), "wget %s -O %s", pPacket->srcurl,
           pPacket->targetfilepath); // targetfilepath must be fullpath+filename
     else
-      sprintf(
-          cmdline, "wget --tries=2 %s -O %s", pPacket->srcurl,
+      written = snprintf(
+          cmdline, sizeof(cmdline), "wget --tries=2 %s -O %s", pPacket->srcurl,
           pPacket->targetfilepath); // targetfilepath must be fullpath+filename
-    ret_val = SysInfo.run_shell_script(
-        cmdline, get_emulation_flag()); // backup-fmw will be updated
+    if (written < sizeof(cmdline))
+      ret_val = SysInfo.run_shell_script(
+          cmdline, get_emulation_flag()); // backup-fmw will be updated
     break;
   case EJSON_SYSMGR_RPC_SET_DOWNLOADTFTP:
     // NOTE: becuase of full tftp command, busy-box-tftp command is absolete
@@ -869,10 +875,12 @@ SysRpc::process_async_download_file(SYSMGR_DOWNLOAD_FILE_PACKET *pPacket,
     // %s",pPacket->sourcefilepath,pPacket->targetfilepath,pPacket->srcurl);
 
     // tftp 192.168.1.1 -c get raspi1-disptst.uimg /tmp/update.bin
-    sprintf(cmdline, "tftp %s -c get %s %s", pPacket->srcurl,
-            pPacket->sourcefilepath, pPacket->targetfilepath);
-    ret_val = SysInfo.run_shell_script(
-        cmdline, get_emulation_flag()); // backup-fmw will be updated
+    written = snprintf(cmdline, sizeof(cmdline), "tftp %s -c get %s %s",
+                       pPacket->srcurl, pPacket->sourcefilepath,
+                       pPacket->targetfilepath);
+    if (written < sizeof(cmdline))
+      ret_val = SysInfo.run_shell_script(
+          cmdline, get_emulation_flag()); // backup-fmw will be updated
     break;
   default:
     break;
@@ -1024,33 +1032,14 @@ int SysRpc::process_get_myip(JsonDataCommObj *pReq) {
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
   SYSMGR_MY_PUBLIC_IP_PACKET *pPacket;
   pPacket = (SYSMGR_MY_PUBLIC_IP_PACKET *)pPanelReq->dataRef;
-
-  /*if(pPanelReq->action!=RPC_SRV_ACT_READ)
-  {
-          pPanelReq->result=RPC_SRV_RESULT_ACTION_NOT_ALLOWED;
-          return 0;
-  }
-  std::string name;
-  ifstream hostNameFile(HOST_NAME_FILE_PATH);
-  if (hostNameFile.is_open())
-  {
-          hostNameFile >> name;
-          hostNameFile.close();
-          strcpy(pPacket->hostname,name.c_str());
-          pPanelReq->result=RPC_SRV_RESULT_SUCCESS;
-  }
-  else
-          pPanelReq->result=RPC_SRV_RESULT_FILE_OPEN_ERR;*/
-
   char cmdline[512];
+  int written;
   ADSysInfo SysInfo;
-  // RPC_SRV_RESULT ret_val=RPC_SRV_RESULT_ARG_ERROR;
-  sprintf(cmdline, "wget http://ipinfo.io/ip -qO -");
-  pPanelReq->result =
-      SysInfo.run_shell_script(cmdline, pPacket->ip, get_emulation_flag());
-  // strcpy(pPacket->ip,"192.168.1.1");
-  // pPanelReq->result=RPC_SRV_RESULT_SUCCESS;
-  // wget http://ipinfo.io/ip -qO -
+  written =
+      snprintf(cmdline, sizeof(cmdline), "wget http://ipinfo.io/ip -qO -");
+  if (written < sizeof(cmdline))
+    pPanelReq->result =
+        SysInfo.run_shell_script(cmdline, pPacket->ip, get_emulation_flag());
   return 0;
 }
 /* ------------------------------------------------------------------------- */
@@ -1196,6 +1185,7 @@ int SysRpc::process_run_shellcmd(JsonDataCommObj *pReq,
                                  ADJsonRpcMgrProducer *pObj,
                                  EJSON_SYSMGR_RPC_TYPES cmdtype) {
   char tmpcmd[1024];
+  int written;
   RPC_SRV_REQ *pPanelReq = NULL;
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
   SYSMGR_SHELLCMD_PACKET *pPacket;
@@ -1210,18 +1200,21 @@ int SysRpc::process_run_shellcmd(JsonDataCommObj *pReq,
     return -1;
   }
   if (cmdtype == EJSON_SYSMGR_RPC_RUN_SHELLCMDTRIG)
-    sprintf(tmpcmd, "%s",
-            pPacket->cmd); // do not redirect if this is a trigger command
+    written =
+        snprintf(tmpcmd, sizeof(tmpcmd), "%s",
+                 pPacket->cmd); // do not redirect if this is a trigger command
   else
-    sprintf(tmpcmd, "%s > %s", pPacket->cmd,
-            SHELLCMD_RESP_FILE_PATH); // SHELLCMD_RESP_FILE_PATH declared in
-                                      // ADCommon.hpp
-  strcpy(pWorkData->cmd, tmpcmd);     // pPacket->cmd);
-  pPanelReq->result = pObj->PushAsyncTask(
-      EJSON_SYSMGR_RPC_RUN_SHELLCMD, (unsigned char *)pWorkData,
-      &pPacket->taskID, WORK_CMD_AFTER_DONE_PRESERVE);
-  if (pPanelReq->result != RPC_SRV_RESULT_IN_PROG)
-    OBJ_MEM_DELETE(pWorkData);
+    written = snprintf(tmpcmd, sizeof(tmpcmd), "%s > %s", pPacket->cmd,
+                       SHELLCMD_RESP_FILE_PATH); // SHELLCMD_RESP_FILE_PATH
+                                                 // declared in ADCommon.hpp
+  if (written < sizeof(tmpcmd)) {
+    strcpy(pWorkData->cmd, tmpcmd); // pPacket->cmd);
+    pPanelReq->result = pObj->PushAsyncTask(
+        EJSON_SYSMGR_RPC_RUN_SHELLCMD, (unsigned char *)pWorkData,
+        &pPacket->taskID, WORK_CMD_AFTER_DONE_PRESERVE);
+    if (pPanelReq->result != RPC_SRV_RESULT_IN_PROG)
+      OBJ_MEM_DELETE(pWorkData);
+  }
   return 0;
 }
 RPC_SRV_RESULT
@@ -1305,7 +1298,6 @@ int SysRpc::process_subscribe_events(JsonDataCommObj *pReq,
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
   SYSMGR_EVNT_SUBSCR_PACKET *pPacket;
   pPacket = (SYSMGR_EVNT_SUBSCR_PACKET *)pPanelReq->dataRef;
-  // pPanelReq->result=ImgId.capture_jpg_image(pDataCache->StrImgIdDebugFile,pDataCache->captureRes.pixels,pDataCache->captureRes.lines);
   if (pDataCache->pEventCustom != NULL) {
     EventMonitor *pEvent = (EventMonitor *)pDataCache->pEventCustom;
     pPanelReq->result = pEvent->ReSubscribeEvents();

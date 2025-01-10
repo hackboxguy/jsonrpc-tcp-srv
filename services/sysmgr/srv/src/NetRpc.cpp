@@ -30,6 +30,8 @@ int NetRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
     return json_to_bin_get_netmask(pReq);
   case EJSON_SYSMGR_RPC_SET_NETMASK:
     return json_to_bin_set_netmask(pReq);
+  default:
+    return -1;
   }
   return -1; // 0;
 }
@@ -54,6 +56,8 @@ int NetRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
     return bin_to_json_get_netmask(pReq);
   case EJSON_SYSMGR_RPC_SET_NETMASK:
     return bin_to_json_set_netmask(pReq);
+  default:
+    return -1;
   }
   return -1;
 }
@@ -79,6 +83,8 @@ int NetRpc::ProcessWork(JsonDataCommObj *pReq, int index,
     return process_get_netmask(pReq);
   case EJSON_SYSMGR_RPC_SET_NETMASK:
     return process_set_netmask(pReq);
+  default:
+    return -1;
   }
   return 0;
 }
