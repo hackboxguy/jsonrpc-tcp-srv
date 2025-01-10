@@ -10,6 +10,8 @@
 #include <iostream>
 #include <vector>
 #ifdef USE_AI_BOT
+#define CPPHTTPLIB_NO_SSL
+#define CPPHTTPLIB_NO_COMPRESSION
 #include <httplib.h>
 #endif
 #include "ADCommon.hpp"

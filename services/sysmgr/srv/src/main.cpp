@@ -352,14 +352,14 @@ DisplayDevice *low_memory_device_special_action(std::string sysconf,
   }
   pDevice->init_display();
   pDevice->clear_display();
-  char msg[255];
+  char msg[600];
   int written;
 
   //////////////line-1 ip-address///////////////
   ADSysInfo SysInfo; // lib-class for reading cpu-info and system-info
-  char netmask[512];
-  char mac[512];
-  char ip[512];
+  char netmask[511];
+  char mac[511];
+  char ip[511];
   if (SysInfo.read_network_info((char *)"eth0", mac, ip, netmask) == 0)
     written = snprintf(msg, sizeof(msg), "%s", ip);
   else {

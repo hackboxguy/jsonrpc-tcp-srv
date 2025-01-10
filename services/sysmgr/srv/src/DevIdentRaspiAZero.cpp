@@ -20,6 +20,7 @@ RPC_SRV_RESULT DevIdentRaspiAZero::device_identify() {
 
   // set the ACT led mode to none
   char command[255];
+  int res;
   sprintf(command, "echo none | tee /sys/class/leds/led0/trigger");
   if (system(command) != 0) {
     // pPanelReq->result=RPC_SRV_RESULT_FILE_OPEN_ERR;
@@ -30,10 +31,10 @@ RPC_SRV_RESULT DevIdentRaspiAZero::device_identify() {
   // blink the ACT LED
   for (int i = 0; i < 10; i++) {
     sprintf(command, "echo 1 | tee /sys/class/leds/led0/brightness");
-    system(command);
+    res = system(command);
     usleep(250000);
     sprintf(command, "echo 0 | tee /sys/class/leds/led0/brightness");
-    system(command);
+    res = system(command);
     usleep(250000);
   }
 

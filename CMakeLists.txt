@@ -16,6 +16,10 @@ if(RUN_AUTO_TEST)
 	add_definitions(-DDEBUG_TEST_MODE)
 endif()
 
+#optimize of size
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os")  # Optimize for size
+endif()
 
 if(${SDSRV_USE_MUSL})
 	add_definitions(-DSDSRV_USE_MUSL_LIB)

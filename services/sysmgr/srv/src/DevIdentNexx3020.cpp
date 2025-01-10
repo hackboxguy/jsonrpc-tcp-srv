@@ -10,15 +10,16 @@ DevIdentNexx3020::~DevIdentNexx3020() {}
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT DevIdentNexx3020::device_identify() {
   char command[255];
+  int res;
   // blink blue led on nexx3020f pocket router
   for (int i = 0; i < 10; i++) {
     sprintf(command,
             "echo 1 > /sys/class/leds/wt3020\\:blue\\:power/brightness");
-    system(command);
+    res = system(command);
     usleep(250000);
     sprintf(command,
             "echo 0 > /sys/class/leds/wt3020\\:blue\\:power/brightness");
-    system(command);
+    res = system(command);
     usleep(250000);
   }
 

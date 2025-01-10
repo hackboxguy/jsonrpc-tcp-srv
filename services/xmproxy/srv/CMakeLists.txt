@@ -31,6 +31,10 @@ project(${COMPONENT_NAME})
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+#optimize for size
+#if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os")  # Optimize for size
+#endif()
 
 # Source files
 file(GLOB SOURCES "src/*.cpp")
@@ -72,7 +76,18 @@ if(WITH_AI_BOT)
       message(STATUS "Found cpp-httplib: ${CPP_HTTPLIB_INCLUDE_DIR}")
   endif()
   # Add cpp-httplib include directory
-  target_include_directories(${COMPONENT_NAME} PRIVATE ${CPP_HTTPLIB_INCLUDE_DIR})
+  #target_include_directories(${COMPONENT_NAME} PRIVATE ${CPP_HTTPLIB_INCLUDE_DIR})
+  # Include the cpp-httplib header
+  #target_include_directories(${COMPONENT_NAME} PRIVATE /usr/include)
+  # Use FetchContent to download cpp-httplib (optional)
+  include(FetchContent)
+  FetchContent_Declare(
+    cpp-httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG v0.18.3  # Replace with the desired version
+  )
+  FetchContent_MakeAvailable(cpp-httplib)
+  target_include_directories(xmproxysrv PRIVATE ${cpp-httplib_SOURCE_DIR})
 endif()
 
 # Specify component's dependencies
@@ -85,7 +100,6 @@ if(WITH_CXMPP_LIB)
       pthread
       rt
       strophe
-      cpp-httplib
     )
   else()
     target_link_libraries(${COMPONENT_NAME} PRIVATE
@@ -106,7 +120,6 @@ else()
       pthread
       rt
       gloox
-      cpp-httplib
     )
   else()
     target_link_libraries(${COMPONENT_NAME} PRIVATE

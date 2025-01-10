@@ -7,5 +7,6 @@ if [ $? != "0" ]; then
 	echo "$STATS" > ${CMAKE_INSTALL_PREFIX}/tests/sysmgr-test/test-report.txt
 	exit 1
 else
+	echo "$STATS" > ${CMAKE_INSTALL_PREFIX}/tests/sysmgr-test/test-report.txt
 	exit 0
 fi
