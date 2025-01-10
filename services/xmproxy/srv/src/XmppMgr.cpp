@@ -289,8 +289,11 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
   else if (msg.find("return=") != std::string::npos) {
     // this is the respose from another bot for a request from this bot
     // cout<<"###reveived resp from another bot####### : "<<msg<<endl;
-    ResponseMsg = msg; // keep this in a cache for later use
-    return 0;          // just consume this message(do not autoreply)
+    ResponseMsg = msg;    // keep this in a cache for later use
+    Inbox.push_back(msg); // keep all incoming messages from other bots(with
+                          // "return="" prefix)
+    // std::cout<<"Got Response Message: "<<ResponseMsg<<std::endl;
+    return 0; // just consume this message(do not autoreply)
   } else if (AiAgentUrl != "") {
     // redirect user commands to ollama hosted ai model
     XmppProxy.send_reply(generate_ai_response(msg), sender);
@@ -2328,5 +2331,22 @@ std::string XmppMgr::generate_ai_response(std::string &prompt) {
   json_object_put(payload);
 #endif
   return "Error generating response";
+}
+/* ------------------------------------------------------------------------- */
+RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_count(int &count) {
+  count = Inbox.size();
+  return RPC_SRV_RESULT_SUCCESS;
+}
+RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_msg(int index,
+                                               std::string &message) {
+  if (index < Inbox.size()) {
+    message = Inbox[index];
+    return RPC_SRV_RESULT_SUCCESS;
+  } else
+    return RPC_SRV_RESULT_VALUE_OUT_OF_RANGE;
+}
+RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_empty() {
+  Inbox.clear();
+  return RPC_SRV_RESULT_SUCCESS;
 }
 /* ------------------------------------------------------------------------- */

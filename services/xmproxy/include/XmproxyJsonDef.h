@@ -20,6 +20,9 @@ typedef enum EJSON_XMPROXY_RPC_TYPES_T {
                                        // roster
   EJSON_XMPROXY_RPC_SET_SUBSCRIBE,     // send xmpp message for friend-request
   EJSON_XMPROXY_RPC_SET_ACCEPT_BUDDY,  // accept friend request when arrives
+  EJSON_XMPROXY_RPC_GET_INBOX_COUNT,   // read total available inbox messages
+  EJSON_XMPROXY_RPC_GET_INBOX,         // read incoming message
+  EJSON_XMPROXY_RPC_SET_INBOX_EMPTY,   // clean inbox
   EJSON_XMPROXY_RPC_END,
   EJSON_XMPROXY_RPC_NONE
 } EJSON_XMPROXY_RPC_TYPES;
@@ -119,5 +122,22 @@ typedef struct XMPROXY_CMN_DATA_CACHE_T {
   ~XMPROXY_CMN_DATA_CACHE_T(){};
 } XMPROXY_CMN_DATA_CACHE;
 /* ------------------------------------------------------------------------- */
-
+typedef struct XMPROXY_INBOX_PACKET_T {
+  int inbox_count; // total messages
+  int inbox_index; // index to read
+  char message[1024];
+} XMPROXY_INBOX_PACKET;
+/* ------------------------------------------------------------------------- */
+// EJSON_XMPROXY_RPC_GET_INBOX_COUNT
+#define XMPROXY_RPC_INBOX_COUNT_GET "get_inbox_count"
+#define XMPROXY_RPC_INBOX_COUNT_ARG "count"
+/* ------------------------------------------------------------------------- */
+// EJSON_XMPROXY_RPC_GET_INBOX
+#define XMPROXY_RPC_INBOX_GET "get_inbox_message"
+#define XMPROXY_RPC_INBOX_INDEX_ARG "index"
+#define XMPROXY_RPC_INBOX_MSG_ARG "message"
+/* ------------------------------------------------------------------------- */
+// EJSON_XMPROXY_RPC_SET_INBOX_EMPTY
+#define XMPROXY_RPC_EMPTY_INBOX_SET "empty_inbox"
+/* ------------------------------------------------------------------------- */
 #endif

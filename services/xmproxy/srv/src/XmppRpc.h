@@ -45,6 +45,18 @@ public:
   int bin_to_json_set_accept_buddy(JsonDataCommObj *pReq);
   int process_set_accept_buddy(JsonDataCommObj *pReq);
 
+  int json_to_bin_get_inbox_count(JsonDataCommObj *pReq);
+  int bin_to_json_get_inbox_count(JsonDataCommObj *pReq);
+  int process_get_inbox_count(JsonDataCommObj *pReq);
+
+  int json_to_bin_get_inbox_msg(JsonDataCommObj *pReq);
+  int bin_to_json_get_inbox_msg(JsonDataCommObj *pReq);
+  int process_get_inbox_msg(JsonDataCommObj *pReq);
+
+  int json_to_bin_set_inbox_clean(JsonDataCommObj *pReq);
+  int bin_to_json_set_inbox_clean(JsonDataCommObj *pReq);
+  int process_set_inbox_clean(JsonDataCommObj *pReq);
+
   /*int json_to_bin_delete_all(JsonDataCommObj* pReq);
   int bin_to_json_delete_all(JsonDataCommObj* pReq);
   int process_delete_all(JsonDataCommObj* pReq,ADJsonRpcMgrProducer* pObj);

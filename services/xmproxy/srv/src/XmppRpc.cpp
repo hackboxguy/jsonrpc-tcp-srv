@@ -25,6 +25,12 @@ int XmppRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
     return json_to_bin_set_subscribe_message(pReq);
   case EJSON_XMPROXY_RPC_SET_ACCEPT_BUDDY:
     return json_to_bin_set_accept_buddy(pReq);
+  case EJSON_XMPROXY_RPC_GET_INBOX_COUNT:
+    return json_to_bin_get_inbox_count(pReq);
+  case EJSON_XMPROXY_RPC_GET_INBOX:
+    return json_to_bin_get_inbox_msg(pReq);
+  case EJSON_XMPROXY_RPC_SET_INBOX_EMPTY:
+    return json_to_bin_set_inbox_clean(pReq);
   // case EJSON_BBOXSMS_RPC_SMS_DELETE_ALL  :return
   // json_to_bin_delete_all(pReq); case EJSON_BBOXSMS_RPC_SMS_DELETE :break;
   // case EJSON_BBOXSMS_RPC_SMS_TOTAL_GET   :return
@@ -54,6 +60,13 @@ int XmppRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
     return bin_to_json_set_subscribe_message(pReq);
   case EJSON_XMPROXY_RPC_SET_ACCEPT_BUDDY:
     return bin_to_json_set_accept_buddy(pReq);
+  case EJSON_XMPROXY_RPC_GET_INBOX_COUNT:
+    return bin_to_json_get_inbox_count(pReq);
+  case EJSON_XMPROXY_RPC_GET_INBOX:
+    return bin_to_json_get_inbox_msg(pReq);
+  case EJSON_XMPROXY_RPC_SET_INBOX_EMPTY:
+    return bin_to_json_set_inbox_clean(pReq);
+
   // case EJSON_BBOXSMS_RPC_SMS_DELETE_ALL  :return
   // bin_to_json_delete_all(pReq); case EJSON_BBOXSMS_RPC_SMS_DELETE :break;
   // case EJSON_BBOXSMS_RPC_SMS_TOTAL_GET   :return
@@ -84,6 +97,12 @@ int XmppRpc::ProcessWork(JsonDataCommObj *pReq, int index,
     return process_set_subscribe_message(pReq);
   case EJSON_XMPROXY_RPC_SET_ACCEPT_BUDDY:
     return process_set_accept_buddy(pReq);
+  case EJSON_XMPROXY_RPC_GET_INBOX_COUNT:
+    return process_get_inbox_count(pReq);
+  case EJSON_XMPROXY_RPC_GET_INBOX:
+    return process_get_inbox_msg(pReq);
+  case EJSON_XMPROXY_RPC_SET_INBOX_EMPTY:
+    return process_set_inbox_clean(pReq);
   // case EJSON_BBOXSMS_RPC_SMS_DELETE_ALL  :return
   // process_delete_all(pReq,pObj); case EJSON_BBOXSMS_RPC_SMS_DELETE :break;
   // case EJSON_BBOXSMS_RPC_SMS_TOTAL_GET   :return process_get_total_sms(pReq);
@@ -439,8 +458,8 @@ int XmppRpc::process_set_send_message(JsonDataCommObj *pReq) {
   std::string Msg(pPacket->msg);
   pPanelReq->result = pMgr->proc_cmd_send_message(To, Msg);
   // TODO: sleep for a while so that response arrives from other end
-  usleep(500000); // sleep 500ms
-  cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
+  // usleep(500000); // sleep 500ms
+  // cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
   return 0;
 }
 /* ------------------------------------------------------------------------- */
@@ -469,8 +488,8 @@ int XmppRpc::process_set_subscribe_message(JsonDataCommObj *pReq) {
   std::string Msg(pPacket->msg);
   pPanelReq->result = pMgr->proc_cmd_subscribe_message(To, Msg);
   // TODO: sleep for a while so that response arrives from other end
-  usleep(500000); // sleep 500ms
-  cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
+  // usleep(500000); // sleep 500ms
+  // cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
   return 0;
 }
 /* ------------------------------------------------------------------------- */
@@ -495,7 +514,74 @@ int XmppRpc::process_set_accept_buddy(JsonDataCommObj *pReq) {
   std::string To(pPacket->to);
   std::string Msg(pPacket->msg);
   pPanelReq->result = pMgr->proc_cmd_add_buddy(To, Msg);
-  cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
+  // cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
+  return 0;
+}
+/* ------------------------------------------------------------------------- */
+int XmppRpc::json_to_bin_get_inbox_count(JsonDataCommObj *pReq) {
+  XMPROXY_INBOX_PACKET *pPanelCmdObj = NULL;
+  PREPARE_JSON_REQUEST(RPC_SRV_REQ, XMPROXY_INBOX_PACKET, RPC_SRV_ACT_READ,
+                       EJSON_XMPROXY_RPC_GET_INBOX_COUNT);
+  return 0;
+}
+int XmppRpc::bin_to_json_get_inbox_count(JsonDataCommObj *pReq) {
+  PREPARE_JSON_RESP_INT(RPC_SRV_REQ, XMPROXY_INBOX_PACKET,
+                        XMPROXY_RPC_INBOX_COUNT_ARG, inbox_count);
+  return 0;
+}
+int XmppRpc::process_get_inbox_count(JsonDataCommObj *pReq) {
+  XmppMgr *pMgr = (XmppMgr *)pDataCache->pXmpMgr;
+  RPC_SRV_REQ *pPanelReq = NULL;
+  pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
+  XMPROXY_INBOX_PACKET *pPacket;
+  pPacket = (XMPROXY_INBOX_PACKET *)pPanelReq->dataRef;
+  pPacket->inbox_count = 0;
+  pPanelReq->result =
+      pMgr->proc_cmd_get_inbox_count(pPacket->inbox_count); // by ref
+  return 0;
+}
+/* ------------------------------------------------------------------------- */
+int XmppRpc::json_to_bin_get_inbox_msg(JsonDataCommObj *pReq) {
+  XMPROXY_INBOX_PACKET *pPanelCmdObj = NULL;
+  PREPARE_JSON_REQUEST(RPC_SRV_REQ, XMPROXY_INBOX_PACKET, RPC_SRV_ACT_READ,
+                       EJSON_XMPROXY_RPC_GET_INBOX);
+  JSON_STRING_TO_INT(XMPROXY_RPC_INBOX_INDEX_ARG, pPanelCmdObj->inbox_index);
+  return 0;
+}
+int XmppRpc::bin_to_json_get_inbox_msg(JsonDataCommObj *pReq) {
+  PREPARE_JSON_RESP_STRING(RPC_SRV_REQ, XMPROXY_INBOX_PACKET,
+                           XMPROXY_RPC_INBOX_MSG_ARG, message);
+  return 0;
+}
+int XmppRpc::process_get_inbox_msg(JsonDataCommObj *pReq) {
+  XmppMgr *pMgr = (XmppMgr *)pDataCache->pXmpMgr;
+  RPC_SRV_REQ *pPanelReq = NULL;
+  pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
+  XMPROXY_INBOX_PACKET *pPacket;
+  pPacket = (XMPROXY_INBOX_PACKET *)pPanelReq->dataRef;
+  std::string tmpMsg = "";
+  pPanelReq->result =
+      pMgr->proc_cmd_get_inbox_msg(pPacket->inbox_index, tmpMsg);
+  strncpy(pPacket->message, tmpMsg.c_str(),
+          sizeof(pPacket->message)); // limit message to 1kb
+  return 0;
+}
+/* ------------------------------------------------------------------------- */
+int XmppRpc::json_to_bin_set_inbox_clean(JsonDataCommObj *pReq) {
+  XMPROXY_INBOX_PACKET *pPanelCmdObj = NULL;
+  PREPARE_JSON_REQUEST(RPC_SRV_REQ, XMPROXY_INBOX_PACKET, RPC_SRV_ACT_READ,
+                       EJSON_XMPROXY_RPC_SET_INBOX_EMPTY);
+  return 0;
+}
+int XmppRpc::bin_to_json_set_inbox_clean(JsonDataCommObj *pReq) {
+  PREPARE_JSON_RESP(RPC_SRV_REQ, XMPROXY_INBOX_PACKET);
+  return 0;
+}
+int XmppRpc::process_set_inbox_clean(JsonDataCommObj *pReq) {
+  XmppMgr *pMgr = (XmppMgr *)pDataCache->pXmpMgr;
+  RPC_SRV_REQ *pPanelReq = NULL;
+  pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
+  pPanelReq->result = pMgr->proc_cmd_get_inbox_empty();
   return 0;
 }
 /* ------------------------------------------------------------------------- */

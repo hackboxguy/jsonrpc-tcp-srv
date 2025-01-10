@@ -33,6 +33,13 @@ class XmproxyCltCmdline : public ADCmdlineHelperConsumer,
                            ADGenericChain *pOutMsgList,
                            ADThreadedSockClientProducer *pWorker);
 
+  int push_get_string_of_index(char *subarg, char *rpc_name, int rpc_index,
+                               char *arg_name, char *result_name);
+  int run_get_string_of_index(CmdExecutionObj *pCmdObj,
+                              ADJsonRpcClient *pSrvSockConn,
+                              ADGenericChain *pOutMsgList,
+                              ADThreadedSockClientProducer *pWorker);
+
 public:
   XmproxyCltCmdline();
   ~XmproxyCltCmdline();

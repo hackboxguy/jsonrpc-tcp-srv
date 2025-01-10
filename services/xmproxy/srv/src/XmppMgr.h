@@ -206,11 +206,11 @@ class XmppMgr : public ADXmppConsumer,
   std::string bboxSmsServerAddr;
   std::deque<XmppCmdEntry> processCmd; // fifo for processing xmpp messages
   std::vector<AyncEventEntry> AsyncTaskList;
-
+  std::deque<std::string> Inbox;
   std::string XmppUserName;
   std::string XmppUserPw;
-  std::string
-      XmppAdminBuddy; // main roster-contact as admin for remote management
+  // main roster-contact as admin for remote management
+  std::string XmppAdminBuddy;
   std::string XmppBkupAdminBuddy; // backup admin buddy
   std::string XmppBotName;
   std::string XmppBotNameFilePath;
@@ -419,5 +419,8 @@ public:
       std::string to, std::string message = "hi",
       std::string subject = "message"); // used for accepting buddy-request
   std::string ResponseMsg;
+  RPC_SRV_RESULT proc_cmd_get_inbox_count(int &count);
+  RPC_SRV_RESULT proc_cmd_get_inbox_msg(int index, std::string &message);
+  RPC_SRV_RESULT proc_cmd_get_inbox_empty();
 };
 #endif
