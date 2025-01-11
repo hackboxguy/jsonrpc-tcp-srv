@@ -713,12 +713,12 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   if (XmppBkupAdminBuddy.size() <= 0)
     XmppBkupAdminBuddy = ""; // no-admin-buddy is available
 
-  if (DebugLog) {
-    cout << "XmppMgr::Start:user     : " << XmppUserName << endl;
-    cout << "XmppMgr::Start:pw       : " << XmppUserPw << endl;
-    cout << "XmppMgr::Start:admin    : " << XmppAdminBuddy << endl;
-    cout << "XmppMgr::Start:adminbkup: " << XmppBkupAdminBuddy << endl;
-  }
+  // if (DebugLog) {
+  //   cout << "XmppMgr::Start:user     : " << XmppUserName << endl;
+  //   cout << "XmppMgr::Start:pw       : " << XmppUserPw << endl;
+  //   cout << "XmppMgr::Start:admin    : " << XmppAdminBuddy << endl;
+  //   cout << "XmppMgr::Start:adminbkup: " << XmppBkupAdminBuddy << endl;
+  // }
 
   XmppClientThread.start_thread();
   return RPC_SRV_RESULT_SUCCESS;
