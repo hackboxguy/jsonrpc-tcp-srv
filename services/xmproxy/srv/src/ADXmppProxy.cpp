@@ -42,6 +42,16 @@ int ADXmppProxy::disconnect() {
   }
   return 0;
 }
+// Function to extract the server part from a JID
+std::string ADXmppProxy::extractServerFromJID(const std::string &jid) {
+  size_t atPos = jid.find('@');
+  if (atPos == std::string::npos) {
+    // If no '@' is found, assume the entire string is the server
+    return jid;
+  }
+  // Extract the server part after the '@'
+  return jid.substr(atPos + 1);
+}
 /*****************************************************************************/
 int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
                          std::string bkupadminbuddy) {
@@ -52,15 +62,17 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
     cout << "ADXmppProxy::connect: Entering===>" << endl;
   AdminBuddy = adminbuddy;
   BkupAdminBuddy = bkupadminbuddy;
+  std::string server = extractServerFromJID(user);
 
   JID jid(user);
   // myJid=jid;
   j = new Client(jid, password);
-  connected = true; // after creation of Client object, make this flag true
-
-  // j->setSasl(true);
-  // j->setSASLMechanisms(gloox::SaslMechPlain);//SaslMechDigestMd5);//SaslMechScramSha1);//);
-  // j->setTls(gloox::TLSPolicy::TLSOptional);//TLSDisabled);
+  connected = true;     // after creation of Client object, make this flag true
+  j->setServer(server); // Set the server explicitly
+  // client.setPort(5222);      // Set the port explicitly
+  //  j->setSasl(true);
+  //  j->setSASLMechanisms(gloox::SaslMechPlain);//SaslMechDigestMd5);//SaslMechScramSha1);//);
+  //  j->setTls(gloox::TLSPolicy::TLSOptional);//TLSDisabled);
 
   j->registerConnectionListener(this);
   j->registerMessageSessionHandler(this, 0);

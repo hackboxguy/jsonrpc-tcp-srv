@@ -86,6 +86,7 @@ public:
   int disconnect();
   int connect(char *user, char *password, std::string adminbuddy = "",
               std::string bkupadminbuddy = "");
+  std::string extractServerFromJID(const std::string &jid);
   int send_reply(std::string reply, std::string sender = "");
   int receive_request(std::string request, std::string sender);
   bool get_connect_sts() { return connected; };
