@@ -412,6 +412,11 @@ public:
       std::string to, std::string message,
       std::string subject =
           "message"); // used for sending message to other clients
+  RPC_SRV_RESULT proc_cmd_send_message_internal(
+      std::string to, std::string message,
+      std::string subject =
+          "message"); // used for sending message to other clients
+
   RPC_SRV_RESULT proc_cmd_subscribe_message(
       std::string to, std::string message = "hi",
       std::string subject = "message"); // used for sending friend request

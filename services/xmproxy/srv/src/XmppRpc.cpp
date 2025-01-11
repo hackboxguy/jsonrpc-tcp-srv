@@ -451,15 +451,11 @@ int XmppRpc::process_set_send_message(JsonDataCommObj *pReq) {
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
   XMPROXY_SENDMSG_PACKET *pPacket;
   pPacket = (XMPROXY_SENDMSG_PACKET *)pPanelReq->dataRef;
-  // pPacket->to;pPacket->msg;
-  // TODO
-  // cout<<"to:"<<pPacket->to<<":msg:"<<pPacket->msg<<endl;
+  // TODO: add subject line to the message
   std::string To(pPacket->to);
   std::string Msg(pPacket->msg);
-  pPanelReq->result = pMgr->proc_cmd_send_message(To, Msg);
-  // TODO: sleep for a while so that response arrives from other end
-  // usleep(500000); // sleep 500ms
-  // cout << "ResponseMsg: " << pMgr->ResponseMsg << endl;
+  pPanelReq->result = pMgr->proc_cmd_send_message_internal(To, Msg);
+  // response to this send message will be stored in Inbox
   return 0;
 }
 /* ------------------------------------------------------------------------- */

@@ -2177,7 +2177,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_buddy_remove(std::string msg,
   return RPC_SRV_RESULT_FAIL;
 }
 /* ------------------------------------------------------------------------- */
-// this function can be called via local rpcclient or via external jabber
+// this function can be called via external jabber(relay the message )
 // client(admin)
 RPC_SRV_RESULT XmppMgr::proc_cmd_send_message(std::string to,
                                               std::string message,
@@ -2187,6 +2187,17 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_send_message(std::string to,
                                               // and then send message
   if (XmppProxy.get_buddy_online_state(to) == 0)
     return RPC_SRV_RESULT_OFFLINE_NODE;
+  if (XmppProxy.SendMessageToBuddy(to, message, subject) == true)
+    return RPC_SRV_RESULT_SUCCESS;
+  else // to address is not in our roster??
+    return RPC_SRV_RESULT_FAIL;
+}
+// this function can be called through internal rpc call
+RPC_SRV_RESULT XmppMgr::proc_cmd_send_message_internal(std::string to,
+                                                       std::string message,
+                                                       std::string subject) {
+  // TODO: check if we really need to check buddy's online state
+  // and if the buddy is really our buddy.
   if (XmppProxy.SendMessageToBuddy(to, message, subject) == true)
     return RPC_SRV_RESULT_SUCCESS;
   else // to address is not in our roster??
