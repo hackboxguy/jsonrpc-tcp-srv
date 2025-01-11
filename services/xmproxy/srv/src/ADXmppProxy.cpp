@@ -69,6 +69,9 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
   j = new Client(jid, password);
   connected = true;     // after creation of Client object, make this flag true
   j->setServer(server); // Set the server explicitly
+  if (DebugLog)
+    cout << "ADXmppProxy::connect: setting the server explicitly, servername:"
+         << server << endl;
   // client.setPort(5222);      // Set the port explicitly
   //  j->setSasl(true);
   //  j->setSASLMechanisms(gloox::SaslMechPlain);//SaslMechDigestMd5);//SaslMechScramSha1);//);
