@@ -65,12 +65,19 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
   std::string server = extractServerFromJID(user);
 
   JID jid(user);
+  jid.setServer(server);
+  if (DebugLog)
+    cout << "ADXmppProxy::connect: setting the server explicitly to JID: "
+            "servername:"
+         << server << endl;
+
   // myJid=jid;
   j = new Client(jid, password);
   connected = true;     // after creation of Client object, make this flag true
   j->setServer(server); // Set the server explicitly
   if (DebugLog)
-    cout << "ADXmppProxy::connect: setting the server explicitly, servername:"
+    cout << "ADXmppProxy::connect: setting the server explicitly to Client, "
+            "servername:"
          << server << endl;
   // client.setPort(5222);      // Set the port explicitly
   //  j->setSasl(true);
