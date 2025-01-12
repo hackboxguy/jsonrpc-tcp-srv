@@ -2,7 +2,7 @@
 FROM alpine:3.19 as builder
 
 # Install build dependencies with cleanup in the same layer
-RUN apk add --no-cache \
+RUN apk add --no-cache --virtual .build-deps \
     wget \
     tar \
     cmake \
@@ -17,19 +17,17 @@ RUN apk add --no-cache \
     pkgconfig \
     linux-headers \
     i2c-tools-dev \
-    musl-dev
-
-# Create proper i2c-dev.h location
-RUN mkdir -p /usr/local/include/linux && \
+    musl-dev && \
+    mkdir -p /usr/local/include/linux && \
     cp /usr/include/linux/i2c-dev.h /usr/local/include/linux/
 
-# Install cpp-httplib (header-only library) with minimal git clone depth
+# Install cpp-httplib (header-only library)
 RUN git clone --depth 1 https://github.com/yhirose/cpp-httplib.git && \
     mkdir -p /usr/local/include && \
     cp cpp-httplib/httplib.h /usr/local/include/ && \
     rm -rf cpp-httplib
 
-# Build libjson-c from source with optimized flags
+# Build libjson-c from source
 RUN wget -q https://s3.amazonaws.com/json-c_releases/releases/json-c-0.15.tar.gz && \
     tar -xzf json-c-0.15.tar.gz && \
     cd json-c-0.15 && \
@@ -75,9 +73,14 @@ EOF
 # Copy and build the application
 COPY . /jsonrpc-tcp-srv
 
+# Create wrapper for tcp-json-rpc-client.cpp to include missing headers
+RUN echo '#include <sys/select.h>' > /tmp/select_wrapper.h && \
+    echo '#include <sys/time.h>' >> /tmp/select_wrapper.h && \
+    cat /jsonrpc-tcp-srv/utils/tcp-json-rpc-client/tcp-json-rpc-client.cpp >> /tmp/select_wrapper.h && \
+    mv /tmp/select_wrapper.h /jsonrpc-tcp-srv/utils/tcp-json-rpc-client/tcp-json-rpc-client.cpp
+
 RUN cd /jsonrpc-tcp-srv && \
     export BUILDOUT=/output && \
-    # Use proper include path for i2c-dev.h
     export CPATH=/usr/local/include && \
     cmake -H. -BOutput \
         -DCMAKE_INSTALL_PREFIX=$BUILDOUT \
@@ -88,10 +91,13 @@ RUN cd /jsonrpc-tcp-srv && \
         -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections" && \
     cmake --build Output -- install -j$(nproc) && \
     strip $BUILDOUT/bin/* && \
+    strip /usr/local/lib/libgloox.so* && \
+    strip /usr/local/lib/libjson-c.so* && \
     cd / && \
-    rm -rf /jsonrpc-tcp-srv
+    rm -rf /jsonrpc-tcp-srv && \
+    apk del .build-deps
 
-# Create minimal runtime image using alpine
+# Create minimal runtime image
 FROM alpine:3.19
 
 # Install only required runtime dependencies
@@ -99,14 +105,17 @@ RUN apk add --no-cache \
     libstdc++ \
     libgcc \
     openssl \
-    i2c-tools
+    dropbear \
+    openssh-client && \
+    rm -rf /var/cache/apk/*
 
 # Copy built artifacts
 COPY --from=builder /output /usr/local
-
-# Copy all necessary libraries
 COPY --from=builder /usr/local/lib/libgloox.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libjson-c.so* /usr/local/lib/
+
+# Remove unnecessary CMake files
+RUN rm -rf /usr/local/lib/cmake
 
 # Set environment variables
 ENV LD_LIBRARY_PATH=/usr/local/lib
@@ -114,9 +123,10 @@ ENV LD_LIBRARY_PATH=/usr/local/lib
 # Copy and set up entrypoint script
 COPY start-xmpp-chatbot.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/start-xmpp-chatbot.sh && \
-    # Create necessary directories
     mkdir -p /usr/local/lib && \
-    # Update library cache
     ldconfig /usr/local/lib || true
+
+# Expose SSH port (optional)
+#EXPOSE 22
 
 ENTRYPOINT ["/usr/local/bin/start-xmpp-chatbot.sh"]
