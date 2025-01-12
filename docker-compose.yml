@@ -1,0 +1,13 @@
+services:
+  xmpp-chatbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xmpp-chatbot
+    secrets:
+      - xmpp-login
+    restart: unless-stopped
+
+secrets:
+  xmpp-login:
+    file: ./xmpp-login.txt
