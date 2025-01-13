@@ -1,0 +1,25 @@
+services:
+  xmpp-chatbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xmpp-chatbot
+    volumes:
+      - ./xmpp-chatbot-data/ssh:/root/.ssh  # Mount SSH keys
+    secrets:
+      - xmpp-login
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /etc/dropbear
+    healthcheck:
+      test: ["CMD", "pgrep", "xmproxysrv"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+secrets:
+  xmpp-login:
+    file: ./xmpp-login.txt

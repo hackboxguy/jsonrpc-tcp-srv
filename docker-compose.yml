@@ -1,25 +1,18 @@
+version: '3.8'
+
 services:
   xmpp-chatbot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: hackboxguy/xmpp-chatbot:v1.0.0
     container_name: xmpp-chatbot
     volumes:
-      - ./xmpp-chatbot-data/ssh:/root/.ssh  # Mount SSH keys
-    secrets:
-      - xmpp-login
+      - ./xmpp-chatbot-data/ssh:/root/.ssh
+      - ./xmpp-login.txt:/run/secrets/xmpp-login
+    environment:
+      - XMPP_LOGIN_FILE=/run/secrets/xmpp-login
     restart: unless-stopped
     read_only: true
     tmpfs:
       - /tmp
       - /var/run
       - /etc/dropbear
-    healthcheck:
-      test: ["CMD", "pgrep", "xmproxysrv"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-secrets:
-  xmpp-login:
-    file: ./xmpp-login.txt
+    network_mode: host

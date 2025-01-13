@@ -57,18 +57,15 @@ RUN wget -q https://camaya.net/download/gloox-1.0.28.tar.bz2 && \
     rm -rf gloox-1.0.28 gloox-1.0.28.tar.bz2
 
 # Configure pkg-config for gloox
-COPY <<EOF /usr/local/lib/pkgconfig/gloox.pc
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-
-Name: gloox
-Description: C++ library for XMPP clients
-Version: 1.0.28
-Libs: -L${libdir} -lgloox
-Cflags: -I${includedir}
-EOF
+RUN echo 'prefix=/usr/local' > /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'exec_prefix=${prefix}' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'libdir=${exec_prefix}/lib' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'includedir=${prefix}/include' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'Name: gloox' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'Description: C++ library for XMPP clients' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'Version: 1.0.28' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'Libs: -L${libdir} -lgloox' >> /usr/local/lib/pkgconfig/gloox.pc && \
+    echo 'Cflags: -I${includedir}' >> /usr/local/lib/pkgconfig/gloox.pc
 
 # Copy and build the application
 COPY . /jsonrpc-tcp-srv
