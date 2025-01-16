@@ -3,6 +3,7 @@ set(PROJECT_NAME Xmproxy)
 project(${PROJECT_NAME})
 add_subdirectory(srv)
 add_subdirectory(clt)
+add_subdirectory(helpers)
 
 #for cross compiling
 #cmake -H. -BOutput -DCMAKE_TOOLCHAIN_FILE=/path/to/toolchain-arm-backup.cmake -DCMAKE_INSTALL_PREFIX=/home/user/tmp/

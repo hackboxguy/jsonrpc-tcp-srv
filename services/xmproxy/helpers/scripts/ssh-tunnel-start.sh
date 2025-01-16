@@ -27,8 +27,8 @@ Optional arguments:
     --remoteport=PORT          SSH server port (default: $DEFAULT_SSH_PORT)
     --remoteuser=USER          SSH username (default: $DEFAULT_SSH_USER)
     --remotetunnelport=PORT    Remote tunnel port (default: $DEFAULT_TUNNEL_PORT)
-    --localserverport=PORT     Local service port to tunnel (default: $DEFAULT_REMOTE_SERVICE_PORT)
-    --localserverhost=HOST     Local service host to tunnel (default: $DEFAULT_REMOTE_SERVICE_HOST)
+    --localport=PORT     Local service port to tunnel (default: $DEFAULT_REMOTE_SERVICE_PORT)
+    --localserver=HOST     Local service host to tunnel (default: $DEFAULT_REMOTE_SERVICE_HOST)
     --sshkey=PATH              Path to SSH private key (default: $DEFAULT_SSH_KEY)
     --timeout=SECONDS          Connection timeout in seconds (default: $DEFAULT_CONNECT_TIMEOUT)
     --retries=COUNT            Max retry count, 0 for infinite (default: $DEFAULT_RETRY_COUNT)
@@ -105,10 +105,10 @@ for i in "$@"; do
         --remotetunnelport=*)
             TUNNEL_PORT=$(get_value "${i#*=}")
             ;;
-        --localserverport=*)
+        --localport=*)
             REMOTE_SERVICE_PORT=$(get_value "${i#*=}")
             ;;
-        --localserverhost=*)
+        --localserver=*)
             REMOTE_SERVICE_HOST=$(get_value "${i#*=}")
             ;;
         --sshkey=*)
