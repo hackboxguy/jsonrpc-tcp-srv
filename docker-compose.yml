@@ -6,6 +6,7 @@ services:
     container_name: xmpp-chatbot
     volumes:
       - ./xmpp-chatbot-data/ssh:/root/.ssh
+      - ./xmpp-chatbot-data/etc/:/xmpp-data/
       - ./xmpp-login.txt:/run/secrets/xmpp-login
     environment:
       - XMPP_LOGIN_FILE=/run/secrets/xmpp-login

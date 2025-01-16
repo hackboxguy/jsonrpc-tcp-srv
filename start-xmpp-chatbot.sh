@@ -31,5 +31,13 @@ exec /usr/local/bin/sysmgr --syscfg=docker &
 # TODO: check if existing /run/secrets/xmpp-login can be directly passed to xmproxysrv
 cp /run/secrets/xmpp-login /tmp/xmpp-login.txt
 
+# copy over default xmpp-alias-list if it doesnt exist
+if [ ! -f /xmpp-data/xmpp-alias-list.txt ]; then
+	cp /usr/local/etc/xmproxy/xmpp-alias-list.txt /xmpp-data/
+fi
 # Start the xmpp-chatbot-server binary
-exec /usr/local/bin/xmproxysrv --loginfile=/tmp/xmpp-login.txt
+exec /usr/local/bin/xmproxysrv --loginfile=/tmp/xmpp-login.txt --aliaslist=/xmpp-data/xmpp-alias-list.txt
+#while true
+#do
+#	sleep 1
+#done

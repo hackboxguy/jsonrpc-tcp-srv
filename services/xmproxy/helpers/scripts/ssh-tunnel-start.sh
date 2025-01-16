@@ -13,7 +13,7 @@ DEFAULT_VERBOSITY=1    # 0=quiet, 1=normal, 2=verbose
 DEFAULT_LOG_FILE="/tmp/remote-ssh.log"
 
 # Script paths
-SSH_MONITOR_SCRIPT="/usr/bin/ssh-running.sh"
+SSH_MONITOR_SCRIPT="/usr/local/sbin/ssh-running.sh"
 
 # Function to print usage information
 print_usage() {
@@ -191,7 +191,8 @@ while true; do
         -o ConnectTimeout=$CONNECT_TIMEOUT \
         -o ServerAliveInterval=60 \
         -o ServerAliveCountMax=3 \
-        -R $TUNNEL_PORT:$REMOTE_SERVICE_HOST:$REMOTE_SERVICE_PORT \
+        -o StrictHostKeyChecking=no \
+	-R $TUNNEL_PORT:$REMOTE_SERVICE_HOST:$REMOTE_SERVICE_PORT \
         $SSH_USER@$SSH_SERVER_IP"
 
     if [ "$VERBOSITY" -ge 2 ]; then

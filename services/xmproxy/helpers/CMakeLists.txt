@@ -10,7 +10,7 @@ set(HELPER_CONFIGS "configs")  # Directory for sysmgr configs
 file(GLOB HELPER_SCRIPTS "${HELPER_SCRIPTS_DIR}/*.sh")
 
 # Install all .sh helper scripts to bin
-install(PROGRAMS ${HELPER_SCRIPTS} DESTINATION bin)
+install(PROGRAMS ${HELPER_SCRIPTS} DESTINATION sbin/)
 
 # Install helper configs
 install(

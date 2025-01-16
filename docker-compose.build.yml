@@ -6,6 +6,7 @@ services:
     container_name: xmpp-chatbot
     volumes:
       - ./xmpp-chatbot-data/ssh:/root/.ssh  # Mount SSH keys
+      - ./xmpp-chatbot-data/etc:/xmpp-data/
     secrets:
       - xmpp-login
     restart: unless-stopped
