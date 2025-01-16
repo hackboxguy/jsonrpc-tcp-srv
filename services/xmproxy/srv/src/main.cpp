@@ -39,6 +39,8 @@ int main(int argc, const char *argv[]) {
   XMPROXY_CMN_DATA_CACHE DataCache;
   DataCache.pDevInfo =
       (void *)&DevInfo; // rpc's needs to know board or device type
+  DevInfo.SyscfgType =
+      CmdLine.get_sys_config_enum(); // read sysconfig type cmdline arg
 
   // ADXmppProxy XmpManager;//xmpp handler
   XmppMgr XmpManager;
@@ -48,6 +50,9 @@ int main(int argc, const char *argv[]) {
   XmpManager.SetUSBGsmSts(CmdLine.is_usbgsm_connected());
   XmpManager.SetOpenWrtCmdGroupSts(!openwrt_system(
       DevInfo.BoardType)); // for openwrt system, disable certain commands.
+  if (DevInfo.SyscfgType == ADCMN_SYSCFG_TYPE_DOCKER)
+    XmpManager.SetDockerCmdGroupSts(
+        false); // disable certain command for docker system
   XmpManager.SetAliasListFilePath(
       CmdLine.get_alias_list_filepath()); // persistant alias list file
   XmpManager.SetBotNameFilePath(

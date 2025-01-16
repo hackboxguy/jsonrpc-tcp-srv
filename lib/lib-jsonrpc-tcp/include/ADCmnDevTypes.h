@@ -32,8 +32,8 @@ typedef enum ADCMN_BOARD_TYPE_T {
 #define ADCMN_SYSCFG_TYPE_TABLE                                                \
   {                                                                            \
     "raspi-remote-kit", "raspi2-remote-kit", "hlk-rm04",                       \
-        "gl-mt300nv2-remote-kit", "gl-mt300nv2-awsiot-demo", "Unknown",        \
-        "none", "\0"                                                           \
+        "gl-mt300nv2-remote-kit", "gl-mt300nv2-awsiot-demo", "docker",         \
+        "Unknown", "none", "\0"                                                \
   }
 typedef enum ADCMN_SYSCFG_TYPE_T {
   ADCMN_SYSCFG_TYPE_RASPI_REMOTE_KIT,
@@ -41,6 +41,7 @@ typedef enum ADCMN_SYSCFG_TYPE_T {
   ADCMN_SYSCFG_TYPE_HLK_RM04,
   ADCMN_SYSCFG_TYPE_GLMT300NV2_REMOTE_KIT,
   ADCMN_SYSCFG_TYPE_GLMT300NV2_AWSIOT_DEMO,
+  ADCMN_SYSCFG_TYPE_DOCKER,
   ADCMN_SYSCFG_TYPE_UNKNOWN,
   ADCMN_SYSCFG_TYPE_NONE
 } ADCMN_SYSCFG_TYPE;

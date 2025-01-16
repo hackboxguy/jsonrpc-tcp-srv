@@ -5,12 +5,12 @@
 #include <iostream>
 #include <json-c/json.h>
 #include <sstream>
+#include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include <sys/select.h>
-#include <sys/time.h>
 
 #define BUFFER_SIZE 4096
 #define TIMEOUT_SEC 5

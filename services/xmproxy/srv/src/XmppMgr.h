@@ -388,6 +388,7 @@ public:
                                      int *xmpptID, std::string &sender);
   void SetUSBGsmSts(bool sts);
   void SetOpenWrtCmdGroupSts(bool sts);
+  void SetDockerCmdGroupSts(bool sts);
   inline void SetAliasListFilePath(std::string filepath) {
     AliasListFile = filepath;
   };

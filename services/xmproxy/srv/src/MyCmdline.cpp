@@ -11,6 +11,7 @@ typedef enum XMPROXY_CMDLINE_OPT_T {
   XMPROXY_CMDLINE_OPT_UPDATEURL,    // updateurl
   XMPROXY_CMDLINE_OPT_AIAGENT,      // aiagent
   XMPROXY_CMDLINE_OPT_AIMODEL,      // aimodel
+  XMPROXY_CMDLINE_OPT_SYSCFG,       // system-type
   XMPROXY_CMDLINE_OPT_UNKNOWN,
   XMPROXY_CMDLINE_OPT_NONE
 } XMPROXY_CMDLINE_OPT;
@@ -22,47 +23,54 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
   NetInterface = "";
   AiAgentUrl = "";
   AiModel = "";
+  SystemConfig = "";
   port_number = portnum;
   strcpy(version_number, version_str);
   CmdlineHelper.attach_helper(this);
   // note:"hviptdln" are already used by the producer class in library
   CmdlineHelper.insert_options_entry((char *)"loginfile", optional_argument,
                                      XMPROXY_CMDLINE_OPT_LOGIN_FILE);
-  CmdlineHelper.insert_help_entry((char *)"--loginfile=filepath (path to the "
-                                          "file having xmpp user/pw details)");
+  CmdlineHelper.insert_help_entry(
+      (char *)"--loginfile=filepath       (path to the "
+              "file having xmpp user/pw details)");
   CmdlineHelper.insert_options_entry((char *)"usbgsm", optional_argument,
                                      XMPROXY_CMDLINE_OPT_USBGSM_STS);
-  CmdlineHelper.insert_help_entry(
-      (char *)"--usbgsm=sts         (sts=0 means no usbgsm module connected)");
+  CmdlineHelper.insert_help_entry((char *)"--usbgsm=sts               (sts=0 "
+                                          "means no usbgsm module connected)");
   CmdlineHelper.insert_options_entry((char *)"aliaslist", optional_argument,
                                      XMPROXY_CMDLINE_OPT_ALIAS_LIST_FILE);
   CmdlineHelper.insert_help_entry(
-      (char *)"--aliaslist=filepath (file path of alias list)");
+      (char *)"--aliaslist=filepath       (file path of alias list)");
   CmdlineHelper.insert_options_entry((char *)"botname", optional_argument,
                                      XMPROXY_CMDLINE_OPT_BOT_NAME_FILE);
   CmdlineHelper.insert_help_entry(
-      (char *)"--botname=filepath   (file path of Bot Name)");
+      (char *)"--botname=filepath         (file path of Bot Name)");
   CmdlineHelper.insert_options_entry((char *)"evntsubscr", optional_argument,
                                      XMPROXY_CMDLINE_OPT_EVNT_SUBSCR_LIST_FILE);
-  CmdlineHelper.insert_help_entry(
-      (char *)"--evntsubscr=filepath(file path of event subscriber's list)");
+  CmdlineHelper.insert_help_entry((char *)"--evntsubscr=filepath      (file "
+                                          "path of event subscriber's list)");
   CmdlineHelper.insert_options_entry((char *)"iface", optional_argument,
                                      XMPROXY_CMDLINE_OPT_NETINTERFACE);
-  CmdlineHelper.insert_help_entry(
-      (char *)"--iface=ethx         (ip of netinterface to print on display)");
+  CmdlineHelper.insert_help_entry((char *)"--iface=ethx               (ip of "
+                                          "netinterface to print on display)");
   CmdlineHelper.insert_options_entry((char *)"updateurl", optional_argument,
                                      XMPROXY_CMDLINE_OPT_UPDATEURL);
   CmdlineHelper.insert_help_entry(
-      (char *)"--updateurl=filepath (sysupdate fmw-file url)");
+      (char *)"--updateurl=filepath       (sysupdate fmw-file url)");
 
   CmdlineHelper.insert_options_entry((char *)"aiagent", optional_argument,
                                      XMPROXY_CMDLINE_OPT_AIAGENT);
   CmdlineHelper.insert_help_entry(
-      (char *)"--aiagent=url (ollama AI agent url)");
-  CmdlineHelper.insert_help_entry((char *)"--aimodel=model (model to connect)");
+      (char *)"--aiagent=url              (ollama AI agent url)");
+  CmdlineHelper.insert_help_entry(
+      (char *)"--aimodel=model            (model to connect)");
   CmdlineHelper.insert_options_entry((char *)"aimodel", optional_argument,
                                      XMPROXY_CMDLINE_OPT_AIMODEL);
-
+  CmdlineHelper.insert_options_entry((char *)"syscfg", optional_argument,
+                                     XMPROXY_CMDLINE_OPT_SYSCFG);
+  CmdlineHelper.insert_help_entry(
+      (char *)"--syscfg=sys_config_str    (specify system type "
+              "ex:a5v11-xmpp/a5v11-base/3020f-base/docker)");
   strcpy(LoginFilePath, XMPROXY_DEFAULT_LOGIN_FILE_PATH);
   UsbGSMSts = false;
   AliasListFilePath[0] = '\0';
@@ -144,6 +152,13 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
       AiModel = "";
     else
       AiModel = sub_arg;
+    break;
+  case XMPROXY_CMDLINE_OPT_SYSCFG:
+    if (CmdlineHelper.get_next_subargument(&sub_arg) ==
+        0) // no system-config passed by user
+      SystemConfig = "none";
+    else
+      SystemConfig = sub_arg;
     break;
   default:
     return 0;
@@ -232,4 +247,19 @@ std::string MyCmdline::get_updateurl_filepath() {
 std::string MyCmdline::get_ai_agent_url() { return AiAgentUrl; }
 /*****************************************************************************/
 std::string MyCmdline::get_ai_model() { return AiModel; }
+/*****************************************************************************/
+std::string MyCmdline::get_sys_config() { return SystemConfig; }
+ADCMN_SYSCFG_TYPE MyCmdline::get_sys_config_enum() {
+  const char *table[] = ADCMN_SYSCFG_TYPE_TABLE;
+  int result;
+  ADCmnStringProcessor string_proc;
+  ADCMN_SYSCFG_TYPE type = ADCMN_SYSCFG_TYPE_UNKNOWN;
+  char *syscfg = (char *)SystemConfig.c_str();
+  result = string_proc.string_to_enum(table, syscfg, ADCMN_SYSCFG_TYPE_UNKNOWN);
+  if (result >= ADCMN_SYSCFG_TYPE_UNKNOWN)
+    type = ADCMN_SYSCFG_TYPE_UNKNOWN;
+  else
+    type = (ADCMN_SYSCFG_TYPE)result;
+  return type;
+}
 /*****************************************************************************/

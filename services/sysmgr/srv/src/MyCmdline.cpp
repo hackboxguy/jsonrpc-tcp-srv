@@ -30,7 +30,7 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
                                      SYSMGR_CMDLINE_OPT_SYSCFG);
   CmdlineHelper.insert_help_entry(
       (char *)"--syscfg=sys_config_str         (specify system type "
-              "ex:a5v11-xmpp/a5v11-base/3020f-base)");
+              "ex:a5v11-xmpp/a5v11-base/3020f-base/docker)");
   CmdlineHelper.insert_options_entry((char *)"disptype", optional_argument,
                                      SYSMGR_CMDLINE_OPT_DISPTYPE);
   CmdlineHelper.insert_help_entry(

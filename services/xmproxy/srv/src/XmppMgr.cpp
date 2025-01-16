@@ -252,6 +252,25 @@ void XmppMgr::SetOpenWrtCmdGroupSts(bool sts) {
   }
 }
 /* ------------------------------------------------------------------------- */
+void XmppMgr::SetDockerCmdGroupSts(bool sts) {
+  int total_cmds = sizeof(xmproxy_cmd_table) / sizeof(XMPROXY_CMD_TABLE);
+  for (int i = 0; i < total_cmds; i++) {
+    switch (xmproxy_cmd_table[i].cmd) {
+    case EXMPP_CMD_FMW_RESET_HOSTNAME:
+    case EXMPP_CMD_FMW_POWEROFF:
+    case EXMPP_CMD_SHUTDOWN:
+    case EXMPP_CMD_FMW_UPDATE:
+    case EXMPP_CMD_FMW_REBOOT:
+      if (xmproxy_cmd_table[i].cmdsts ==
+          true) // if default is disabled, then dont enable it
+        xmproxy_cmd_table[i].cmdsts = sts;
+      break;
+    default:
+      break;
+    }
+  }
+}
+/* ------------------------------------------------------------------------- */
 std::string XmppMgr::print_help() {
   std::string help = "", cmd, cmdhlp;
   /*const char *cmdTbl[]     = EXMPP_CMD_TABL;

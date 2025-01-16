@@ -16,6 +16,7 @@ class MyCmdline : public ADCmdlineHelperConsumer, public ADCmnStringProcessor {
   std::string NetInterface;
   std::string AiAgentUrl;
   std::string AiModel;
+  std::string SystemConfig;
   // Chain-callback functions
   virtual int parse_my_cmdline_options(int arg, char *sub_arg);
   virtual int
@@ -46,6 +47,8 @@ public:
   std::string get_updateurl_filepath();
   std::string get_ai_agent_url();
   std::string get_ai_model();
+  std::string get_sys_config();
+  ADCMN_SYSCFG_TYPE get_sys_config_enum();
   // service specific part
 };
 #endif
