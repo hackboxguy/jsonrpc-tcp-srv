@@ -213,6 +213,6 @@ while true; do
         log_message 1 "SSH connection failed with exit code $SSH_EXIT_CODE"
     fi
 
-    log_message 1 "SSH tunnel disconnected, reconnecting in 15 seconds..."
-    sleep 15
+    log_message 1 "SSH tunnel disconnected, reconnecting in 10 seconds..."
+    sleep 10
 done

@@ -9,4 +9,4 @@ sshkeyclean=shellcmd rm -rf /root/.ssh/id_rsa
 sshkeynew=shellcmdtrig rm -rf /root/.ssh/;shellcmdtrig mkdir -p /root/.ssh/;shellcmdtrig ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""
 sshstart=shellcmd /usr/local/sbin/ssh-start.sh $remoteuser $remoteserver $remoteport $remotetunnelport $localserver $localport &
 sshstatus=shellcmd /usr/local/sbin/ssh-running.sh $remoteport
-sshstop=shellcmd /usr/local/sbin/ssh-stop.sh $remoteport
+sshstop=shellcmd /usr/local/sbin/ssh-stop.sh
