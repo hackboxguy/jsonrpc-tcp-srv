@@ -3,7 +3,7 @@ version: '3.8'
 services:
   xmpp-chatbot:
     #build: .
-    image: hackboxguy/xmpp-chatbot:v1.0.0
+    image: hackboxguy/xmpp-chatbot:latest
     container_name: xmpp-chatbot
     volumes:
       - ./xmpp-chatbot-data/ssh:/root/.ssh
