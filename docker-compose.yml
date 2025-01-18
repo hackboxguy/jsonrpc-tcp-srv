@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   xmpp-chatbot:
+    #build: .
     image: hackboxguy/xmpp-chatbot:v1.0.0
     container_name: xmpp-chatbot
     volumes:
@@ -10,6 +11,8 @@ services:
       - ./xmpp-login.txt:/run/secrets/xmpp-login
     environment:
       - XMPP_LOGIN_FILE=/run/secrets/xmpp-login
+        #- XMPP_AI_URL=http://localhost:11434
+        #- XMPP_AI_MODEL=phi4:latest
     restart: unless-stopped
     read_only: true
     tmpfs:
