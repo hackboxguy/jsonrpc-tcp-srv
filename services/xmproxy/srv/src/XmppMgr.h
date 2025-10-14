@@ -217,6 +217,12 @@ class XmppMgr : public ADXmppConsumer,
   std::string XmppNetInterface;
   std::string AiAgentUrl;
   std::string AiModel;
+  // BOSH connection parameters (for corporate networks)
+  bool XmppUseBosh;
+  std::string XmppBoshUrl;
+  std::string XmppBoshHost;
+  bool XmppTlsVerify;
+  std::string XmppSaslMech; // SASL mechanism: "scram-sha-1" or empty for default
 #ifdef USE_CXMPP_LIB
   CXmppProxy XmppProxy; // xmpp client
 #else

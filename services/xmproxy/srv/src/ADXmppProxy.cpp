@@ -25,6 +25,12 @@ ADXmppProxy::ADXmppProxy() {
   AdminBuddy = "";
   BkupAdminBuddy = "";
   // AcceptThisBuddy="";
+  // BOSH parameters
+  UseBOSH = false;
+  BoshURL = "";
+  BoshHost = "";
+  TlsVerify = true;
+  SaslMech = "";
   PingThread.subscribe_thread_callback(this);
   PingThread.set_thread_properties(THREAD_TYPE_MONOSHOT, (void *)this);
   PingThread.start_thread();
@@ -37,8 +43,16 @@ ADXmppProxy::~ADXmppProxy() {
 int ADXmppProxy::disconnect() {
   if (j != NULL) {
     j->disconnect();
-    while (connected)
-      usleep(100000);
+    // Wait for disconnection with timeout (max 2 seconds for BOSH)
+    int timeout_count = 0;
+    int max_timeout = UseBOSH ? 20 : 50; // 2 seconds for BOSH, 5 seconds for TCP
+    while (connected && timeout_count < max_timeout) {
+      usleep(100000); // 100ms
+      timeout_count++;
+    }
+    if (connected && DebugLog) {
+      cout << "ADXmppProxy::disconnect: Timeout waiting for disconnection, forcing close" << endl;
+    }
   }
   return 0;
 }
@@ -53,47 +67,213 @@ std::string ADXmppProxy::extractServerFromJID(const std::string &jid) {
   return jid.substr(atPos + 1);
 }
 /*****************************************************************************/
+// Helper function to parse BOSH URL into components
+ADXmppProxy::BoshUrlComponents
+ADXmppProxy::parseBoshUrl(const std::string &url) {
+  BoshUrlComponents result;
+  size_t pos = 0;
+
+  // Extract protocol (https:// or http://)
+  size_t protocolEnd = url.find("://");
+  if (protocolEnd != std::string::npos) {
+    result.protocol = url.substr(0, protocolEnd);
+    pos = protocolEnd + 3;
+  } else {
+    result.protocol = "http";
+  }
+
+  // Find path start
+  size_t pathStart = url.find("/", pos);
+  std::string hostPort;
+
+  if (pathStart != std::string::npos) {
+    hostPort = url.substr(pos, pathStart - pos);
+    result.path = url.substr(pathStart);
+  } else {
+    hostPort = url.substr(pos);
+    result.path = "/";
+  }
+
+  // Split host:port (use rfind to handle IPv6 addresses)
+  size_t portPos = hostPort.rfind(":");
+  if (portPos != std::string::npos) {
+    result.host = hostPort.substr(0, portPos);
+    result.port = std::stoi(hostPort.substr(portPos + 1));
+  } else {
+    result.host = hostPort;
+    result.port = (result.protocol == "https") ? 443 : 80;
+  }
+
+  return result;
+}
+/*****************************************************************************/
 int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
-                         std::string bkupadminbuddy) {
+                         std::string bkupadminbuddy, bool useBosh,
+                         std::string boshUrl, std::string boshHost,
+                         bool tlsVerify, std::string saslMech) {
   if (j != NULL)
     return 0;
 
   if (DebugLog)
     cout << "ADXmppProxy::connect: Entering===>" << endl;
+
   AdminBuddy = adminbuddy;
   BkupAdminBuddy = bkupadminbuddy;
+  UseBOSH = useBosh;
+  BoshURL = boshUrl;
+  BoshHost = boshHost;
+  TlsVerify = tlsVerify;
+  SaslMech = saslMech;
+
   std::string server = extractServerFromJID(user);
 
+  // If boshHost not provided, use server from JID
+  if (UseBOSH && BoshHost.empty()) {
+    BoshHost = server;
+  }
+
   JID jid(user);
-  jid.setServer(server);
+  // Note: Don't explicitly set server - let gloox parse it from the full JID
+  // jid.setServer(server) can cause SCRAM authentication issues
   if (DebugLog)
-    cout << "ADXmppProxy::connect: setting the server explicitly to JID: "
-            "servername:"
-         << server << endl;
+    cout << "ADXmppProxy::connect: Using JID: " << jid.full()
+         << " (server: " << server << ")" << endl;
 
   // myJid=jid;
   j = new Client(jid, password);
-  connected = true;     // after creation of Client object, make this flag true
-  j->setServer(server); // Set the server explicitly
-  if (DebugLog)
-    cout << "ADXmppProxy::connect: setting the server explicitly to Client, "
-            "servername:"
-         << server << endl;
-  j->setPort(5222);
-  // client.setPort(5222);      // Set the port explicitly
-  //  j->setSasl(true);
-  //  j->setSASLMechanisms(gloox::SaslMechPlain);//SaslMechDigestMd5);//SaslMechScramSha1);//);
-  //  j->setTls(gloox::TLSPolicy::TLSOptional);//TLSDisabled);
+  connected = true; // after creation of Client object, make this flag true
 
+  // Configure SASL mechanisms if specified
+  if (!SaslMech.empty()) {
+    if (SaslMech == "scram-sha-1") {
+      // Disable SCRAM-SHA-1-PLUS to avoid channel binding issues
+      // Use only SCRAM-SHA-1 (without channel binding)
+      j->setSASLMechanisms(SaslMechAll ^ SaslMechScramSha1Plus);
+      cout << "ADXmppProxy::connect: SASL mechanism set to SCRAM-SHA-1 (channel binding disabled)" << endl;
+    } else if (SaslMech == "scram-sha-1-plus") {
+      // Use only SCRAM-SHA-1-PLUS (with channel binding)
+      j->setSASLMechanisms(SaslMechScramSha1Plus);
+      cout << "ADXmppProxy::connect: SASL mechanism set to SCRAM-SHA-1-PLUS (channel binding enabled)" << endl;
+    } else if (SaslMech == "plain") {
+      // Use PLAIN mechanism (simple base64-encoded username/password)
+      // Useful for testing credentials, but sends password in cleartext over TLS
+      j->setSASLMechanisms(SaslMechPlain);
+      cout << "ADXmppProxy::connect: SASL mechanism set to PLAIN (credentials sent over TLS)" << endl;
+    } else {
+      cout << "ADXmppProxy::connect: Warning - Unknown SASL mechanism: " << SaslMech << ", using default" << endl;
+    }
+  } else {
+    if (DebugLog)
+      cout << "ADXmppProxy::connect: Using default SASL mechanisms" << endl;
+  }
+
+  if (UseBOSH) {
+    // BOSH mode - tunnel XMPP over HTTP(S)
+    if (DebugLog || true) { // Always log BOSH attempts
+      cout << "ADXmppProxy::connect: ========== BOSH MODE ENABLED ==========" << endl;
+      cout << "  BOSH URL:      " << BoshURL << endl;
+      cout << "  BOSH Host:     " << BoshHost << endl;
+      cout << "  TLS Verify:    " << (TlsVerify ? "true" : "false") << endl;
+    }
+
+    // Parse BOSH URL into components
+    BoshUrlComponents urlParts = parseBoshUrl(BoshURL);
+
+    if (DebugLog || true) {
+      cout << "  Parsed URL:" << endl;
+      cout << "    protocol:  " << urlParts.protocol << endl;
+      cout << "    host:      " << urlParts.host << endl;
+      cout << "    port:      " << urlParts.port << endl;
+      cout << "    path:      " << urlParts.path << endl;
+    }
+
+    // Set server FIRST (before creating connections) - needed for BOSH
+    j->setServer(BoshHost);
+
+    // Disable compression for BOSH
+    j->setCompression(false);
+
+    // Create TCP connection to the IP/hostname
+    ConnectionTCPClient *conn0 = new ConnectionTCPClient(
+        j->logInstance(),
+        urlParts.host,  // IP address or hostname (e.g., 192.168.1.2)
+        urlParts.port   // Usually 443 for HTTPS
+    );
+
+    // Wrap TCP with TLS layer for HTTPS (required for port 443)
+    ConnectionTLS *connTls = new ConnectionTLS(
+        j,       // ConnectionDataHandler (Client implements this)
+        conn0,   // Underlying TCP connection
+        j->logInstance()  // LogSink
+    );
+
+    // Set server name for TLS SNI (Server Name Indication)
+    connTls->setServer(BoshHost);
+
+    if (DebugLog || true) {
+      cout << "  TLS layer added for HTTPS, SNI host: " << BoshHost << endl;
+    }
+
+    // Wrap with BOSH layer (use domain name for Host header)
+    // Constructor: ConnectionBOSH(ConnectionDataHandler*, ConnectionBase*, LogSink&, boshHost, xmppServer, xmppPort)
+    ConnectionBOSH *conn1 = new ConnectionBOSH(
+        j,                // Client (implements ConnectionDataHandler)
+        connTls,          // TLS-wrapped TCP connection (not raw TCP)
+        j->logInstance(), // LogSink
+        BoshHost,         // BOSH hostname (for HTTP Host header - domain name)
+        BoshHost,         // XMPP server name (domain name)
+        urlParts.port     // Use actual connection port, not virtual 5222
+    );
+
+    // Set the BOSH path (from the parsed URL) - CRITICAL for HTTP 400 fix
+    conn1->setPath(urlParts.path);
+
+    if (DebugLog || true) {
+      cout << "  BOSH path set to: " << urlParts.path << endl;
+    }
+
+    // Use HTTP Pipelining mode (single connection, avoids TLS pool issues)
+    conn1->setMode(ConnectionBOSH::ModePipelining);
+
+    if (DebugLog || true) {
+      cout << "  BOSH mode: HTTP Pipelining (single connection)" << endl;
+    }
+
+    // Attach custom connection to client
+    j->setConnectionImpl(conn1);
+
+    // TLS settings
+    if (TlsVerify) {
+      j->setTls(TLSPolicy::TLSRequired);
+      if (DebugLog)
+        cout << "  TLS: Required with certificate validation" << endl;
+    } else {
+      j->setTls(TLSPolicy::TLSOptional);
+      if (DebugLog || true)
+        cout << "  TLS: Optional (certificate validation DISABLED for corporate "
+                "networks)"
+             << endl;
+    }
+
+    if (DebugLog || true)
+      cout << "=========================================================" << endl;
+
+  } else {
+    // Traditional TCP mode (existing behavior)
+    j->setServer(server);
+    j->setPort(5222);
+    if (DebugLog)
+      cout << "ADXmppProxy::connect: TCP mode on port 5222, server: " << server
+           << endl;
+  }
+
+  // Common setup for both modes
   j->registerConnectionListener(this);
   j->registerMessageSessionHandler(this, 0);
   j->rosterManager()->registerRosterListener(this);
   j->disco()->setVersion("messageTest", GLOOX_VERSION, "Linux");
   j->disco()->setIdentity("client", "jsonbot");
   j->disco()->addFeature(XMLNS_CHAT_STATES);
-  // StringList ca;
-  // ca.push_back( "/home/usr/prosody.crt" );
-  // j->setCACerts( ca );
 
   // LogLevelDebug
   if (DebugLog)
@@ -101,29 +281,74 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
   else
     j->logInstance().registerLogHandler(LogLevelWarning, LogAreaAll, this);
 
-  // if(BOSH_Connection==true)
-  //{
-  //	j->setCompression(false);
-  //	ConnectionTCPClient* conn0 = new ConnectionTCPClient( j->logInstance(),
-  //"bind.jabber.de", 443 ); 	ConnectionBOSH* conn1 = new ConnectionBOSH( j,
-  // conn0, j->logInstance(), "bind.jabber.de", "jabber.de" ); conn1->setMode(
-  // ConnectionBOSH::ModeLegacyHTTP ); conn1->setMode(
-  // ConnectionBOSH::ModePersistentHTTP );
-  //	j->setConnectionImpl( conn1 );
-  //	j->setForceNonSasl( true );
-  //}
-
   HeartBeat = 0;
 
   ConnectionError ce = ConnNoError;
   if (j->connect(false)) {
     while (ce == ConnNoError) {
+      // Use blocking recv() - BOSH will handle timing internally
       ce = j->recv();
       if (DebugLog)
         cout << "ADXmppProxy::connect:Message Arrived!!!" << endl;
     }
-    if (DebugLog)
-      printf("ce: %d\n", ce);
+
+    // Enhanced error logging (especially for BOSH)
+    if (ce != ConnNoError) {
+      if (DebugLog || UseBOSH) { // Always log errors in BOSH mode
+        cout << "ADXmppProxy::connect: Connection ended with error" << endl;
+        cout << "  Error code: " << ce << endl;
+        cout << "  Mode: " << (UseBOSH ? "BOSH" : "TCP") << endl;
+
+        // Connection error descriptions
+        switch (ce) {
+        case ConnAuthenticationFailed:
+          cout << "  Reason: Authentication failed (bad credentials?)" << endl;
+          break;
+        case ConnDnsError:
+          cout << "  Reason: DNS error (cannot resolve hostname)" << endl;
+          break;
+        case ConnConnectionRefused:
+          cout << "  Reason: Connection refused (firewall/port blocked?)" << endl;
+          break;
+        case ConnTlsFailed:
+          cout << "  Reason: TLS handshake failed (certificate issue?)" << endl;
+          break;
+        case ConnStreamError:
+          cout << "  Reason: XMPP stream error" << endl;
+          break;
+        case ConnNotConnected:
+          cout << "  Reason: Not connected" << endl;
+          break;
+        default:
+          cout << "  Reason: Unknown error" << endl;
+          break;
+        }
+
+        if (UseBOSH) {
+          cout << "  Troubleshooting:" << endl;
+          cout << "    - Verify BOSH URL is correct: " << BoshURL << endl;
+          cout << "    - Check server supports BOSH at /http-bind" << endl;
+          cout << "    - Test with: curl -v " << BoshURL << endl;
+          if (!TlsVerify) {
+            cout << "    - TLS verification is DISABLED (cert mismatch allowed)"
+                 << endl;
+          }
+        }
+      }
+    } else {
+      if (DebugLog)
+        cout << "ADXmppProxy::connect: Connection closed normally" << endl;
+    }
+  } else {
+    // Connection attempt failed immediately
+    if (DebugLog || UseBOSH) {
+      cout << "ADXmppProxy::connect: Failed to initiate connection" << endl;
+      cout << "  Mode: " << (UseBOSH ? "BOSH" : "TCP") << endl;
+      if (UseBOSH) {
+        cout << "  BOSH URL: " << BoshURL << endl;
+        cout << "  Check network connectivity and firewall settings" << endl;
+      }
+    }
   }
 
   usleep(100000);

@@ -16,6 +16,7 @@
 #include <gloox/connectionlistener.h>
 #include <gloox/connectionsocks5proxy.h>
 #include <gloox/connectiontcpclient.h>
+#include <gloox/connectiontls.h>
 #include <gloox/disco.h>
 #include <gloox/eventhandler.h>
 #include <gloox/gloox.h>
@@ -85,8 +86,19 @@ public:
   ~ADXmppProxy(); //{}
   int disconnect();
   int connect(char *user, char *password, std::string adminbuddy = "",
-              std::string bkupadminbuddy = "");
+              std::string bkupadminbuddy = "", bool useBosh = false,
+              std::string boshUrl = "", std::string boshHost = "",
+              bool tlsVerify = true, std::string saslMech = "");
   std::string extractServerFromJID(const std::string &jid);
+
+  // Helper function for BOSH URL parsing
+  struct BoshUrlComponents {
+    std::string protocol;
+    std::string host;
+    int port;
+    std::string path;
+  };
+  BoshUrlComponents parseBoshUrl(const std::string &url);
   int send_reply(std::string reply, std::string sender = "");
   int receive_request(std::string request, std::string sender);
   bool get_connect_sts() { return connected; };
@@ -175,6 +187,13 @@ private:
   int HeartBeat;
   // JID myJid;
   Client *j;
+
+  // BOSH connection parameters
+  bool UseBOSH;
+  std::string BoshURL;
+  std::string BoshHost;
+  bool TlsVerify;
+  std::string SaslMech; // SASL mechanism: "scram-sha-1" or empty for default
   // MessageSession *m_session;
   // MessageEventFilter *m_messageEventFilter;
   // ChatStateFilter *m_chatStateFilter;

@@ -136,6 +136,12 @@ XmppMgr::XmppMgr() //: AckToken(0)
   DebugLog = false;
   AiAgentUrl = "";
   AiModel = "llama2:7b"; // choose as default
+  // BOSH parameters
+  XmppUseBosh = false;
+  XmppBoshUrl = "";
+  XmppBoshHost = "";
+  XmppTlsVerify = true;
+  XmppSaslMech = "";
 #ifdef USE_AI_BOT
   botcli = NULL;
 #endif
@@ -336,7 +342,8 @@ int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
         false) // user has requested for disconnect via rpc
       XmppProxy.connect((char *)XmppUserName.c_str(),
                         (char *)XmppUserPw.c_str(), XmppAdminBuddy,
-                        XmppBkupAdminBuddy);
+                        XmppBkupAdminBuddy, XmppUseBosh, XmppBoshUrl,
+                        XmppBoshHost, XmppTlsVerify, XmppSaslMech);
     // cout<<"XmppMgr::thread_callback_function: exited xmpp connect"<<endl;
     // XmppProxy.disconnect();
     if (XmppProxy.getForcedDisconnect())
@@ -691,46 +698,75 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   std::ifstream file(accountFilePath.c_str());
   std::string line, key;
 
-  // read username
-  std::getline(file, line);
-  if (line.size() <= 0)
-    return RPC_SRV_RESULT_FAIL;
-  stringstream userstream(line);
-  userstream >> key;          // first-word  ("user:")
-  userstream >> XmppUserName; //=userstream.str();//second-word
-                              //("xyz.user@ubuntujabber.de")
-  if (XmppUserName.size() <= 0)
-    return RPC_SRV_RESULT_FAIL;
+  // Parse config file using key-value pairs
+  // All fields after user: and pw: are optional
+  while (std::getline(file, line)) {
+    if (line.size() == 0)
+      continue; // skip empty lines
 
-  // read passowrd
-  std::getline(file, line);
-  if (line.size() <= 0)
-    return RPC_SRV_RESULT_FAIL;
-  stringstream pwstream(line);
-  pwstream >> key;        // first-word  ("pw:")
-  pwstream >> XmppUserPw; //=pwstream.str();//second-word ("xyzpw")
-  if (XmppUserPw.size() <= 0)
-    return RPC_SRV_RESULT_FAIL;
+    stringstream linestream(line);
+    std::string key, value;
+    linestream >> key; // Get the key (user:, pw:, adminbuddy:, etc.)
 
-  // read admin-buddy if available(it is advisible to provide adminbuddy)
-  std::getline(file, line);
-  if (line.size() <= 0)
-    XmppAdminBuddy = ""; // no-admin-buddy is available
-  stringstream abstream(line);
-  abstream >> key; // first-word  ("adminbuddy:")
-  abstream >> XmppAdminBuddy;
-  if (XmppAdminBuddy.size() <= 0)
-    XmppAdminBuddy = ""; // no-admin-buddy is available
+    if (key == "user:") {
+      linestream >> XmppUserName;
+      if (XmppUserName.size() <= 0) {
+        cout << "XmppMgr::Start: Error - username is required" << endl;
+        return RPC_SRV_RESULT_FAIL;
+      }
+    } else if (key == "pw:") {
+      linestream >> XmppUserPw;
+      if (XmppUserPw.size() <= 0) {
+        cout << "XmppMgr::Start: Error - password is required" << endl;
+        return RPC_SRV_RESULT_FAIL;
+      }
+    } else if (key == "adminbuddy:") {
+      linestream >> XmppAdminBuddy;
+      if (DebugLog && XmppAdminBuddy.size() > 0)
+        cout << "XmppMgr::Start: Admin buddy: " << XmppAdminBuddy << endl;
+    } else if (key == "bkupadminbuddy:") {
+      linestream >> XmppBkupAdminBuddy;
+      if (DebugLog && XmppBkupAdminBuddy.size() > 0)
+        cout << "XmppMgr::Start: Backup admin buddy: " << XmppBkupAdminBuddy << endl;
+    } else if (key == "bosh:") {
+      linestream >> value;
+      XmppUseBosh = (value == "true" || value == "True" || value == "TRUE");
+      if (DebugLog || XmppUseBosh)
+        cout << "XmppMgr::Start: BOSH mode: "
+             << (XmppUseBosh ? "enabled" : "disabled") << endl;
+    } else if (key == "boshurl:") {
+      linestream >> XmppBoshUrl;
+      if (DebugLog || XmppUseBosh)
+        cout << "XmppMgr::Start: BOSH URL: " << XmppBoshUrl << endl;
+    } else if (key == "boshhost:") {
+      linestream >> XmppBoshHost;
+      if (DebugLog || XmppUseBosh)
+        cout << "XmppMgr::Start: BOSH Host: " << XmppBoshHost << endl;
+    } else if (key == "tlsverify:") {
+      linestream >> value;
+      XmppTlsVerify = !(value == "false" || value == "False" || value == "FALSE");
+      if (DebugLog || XmppUseBosh)
+        cout << "XmppMgr::Start: TLS Verify: "
+             << (XmppTlsVerify ? "enabled" : "disabled") << endl;
+    } else if (key == "saslmech:") {
+      linestream >> XmppSaslMech;
+      if (DebugLog || !XmppSaslMech.empty())
+        cout << "XmppMgr::Start: SASL Mechanism: "
+             << (XmppSaslMech.empty() ? "default" : XmppSaslMech) << endl;
+    }
+  }
 
-  // read backup-admin-buddy if available(it is advisible to provide adminbuddy)
-  std::getline(file, line);
-  if (line.size() <= 0)
-    XmppBkupAdminBuddy = ""; // no-bkup-admin-buddy is available
-  stringstream adminstream(line);
-  adminstream >> key; // first-word  ("bkupadminbuddy:")
-  adminstream >> XmppBkupAdminBuddy;
-  if (XmppBkupAdminBuddy.size() <= 0)
-    XmppBkupAdminBuddy = ""; // no-admin-buddy is available
+  // Validate required fields
+  if (XmppUserName.size() <= 0) {
+    cout << "XmppMgr::Start: Error - 'user:' field is required in config file" << endl;
+    return RPC_SRV_RESULT_FAIL;
+  }
+  if (XmppUserPw.size() <= 0) {
+    cout << "XmppMgr::Start: Error - 'pw:' field is required in config file" << endl;
+    return RPC_SRV_RESULT_FAIL;
+  }
+
+  file.close();
 
   // if (DebugLog) {
   //   cout << "XmppMgr::Start:user     : " << XmppUserName << endl;
