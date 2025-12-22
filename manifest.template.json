@@ -1,0 +1,74 @@
+{
+  "name": "@VMBOX_PROJECT_NAME@",
+  "version": "1.0.0",
+  "description": "JSON-RPC TCP Server Framework with XMPP Proxy",
+  "type": "service",
+  "port": 40005,
+
+  "health": {
+    "type": "tcp",
+    "port": 40005,
+    "interval": 10,
+    "timeout": 5
+  },
+
+  "startup": {
+    "command": "/app/@VMBOX_PROJECT_NAME@/scripts/start-services.sh",
+    "args": [],
+    "working_dir": "/app/@VMBOX_PROJECT_NAME@",
+    "priority": 70,
+    "depends_on": []
+  },
+
+  "shutdown": {
+    "command": "/app/@VMBOX_PROJECT_NAME@/scripts/stop-services.sh",
+    "timeout": 15,
+    "signal": "SIGTERM"
+  },
+
+  "services": {
+    "sysmgr": {
+      "description": "System Manager JSON-RPC Server",
+      "port": 40001,
+      "priority": 70,
+      "command": "/app/@VMBOX_PROJECT_NAME@/bin/sysmgr",
+      "args": []
+    },
+    "xmproxy": {
+      "description": "XMPP Proxy JSON-RPC Server",
+      "port": 40005,
+      "priority": 74,
+      "depends_on": ["sysmgr"],
+      "command": "/app/@VMBOX_PROJECT_NAME@/bin/xmproxysrv",
+      "args": [
+        "--loginfile", "/data/app-config/@VMBOX_PROJECT_NAME@/xmpp-login.txt"
+      ]
+    }
+  },
+
+  "data_dirs": [
+    "logs"
+  ],
+
+  "config_files": [
+    {
+      "source": "etc/xmproxy/xmpp-login.txt",
+      "dest": "xmpp-login.txt"
+    }
+  ],
+
+  "env": {
+    "APP_ROOT": "/app/@VMBOX_PROJECT_NAME@",
+    "APP_DATA_DIR": "/data/app-data/@VMBOX_PROJECT_NAME@",
+    "APP_CONFIG_DIR": "/data/app-config/@VMBOX_PROJECT_NAME@",
+    "APP_LOG_FILE": "/var/log/app/@VMBOX_PROJECT_NAME@.log",
+    "LD_LIBRARY_PATH": "/app/@VMBOX_PROJECT_NAME@/lib"
+  },
+
+  "logging": {
+    "file": "/var/log/app/@VMBOX_PROJECT_NAME@.log",
+    "syslog_tag": "app.@VMBOX_PROJECT_NAME@",
+    "max_size_mb": 10,
+    "rotate_count": 3
+  }
+}

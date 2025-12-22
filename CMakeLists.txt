@@ -2,16 +2,18 @@ cmake_minimum_required(VERSION 3.14)
 set(PROJECT_NAME BrBoxComponents)
 project(${PROJECT_NAME})
 
-# Enable warnings as errors globally for C++ projects
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
-# Enable warnings as errors globally for C projects
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
-
 set(ONION_USE_SQLITE3 FALSE CACHE BOOL "Enable or disable SQLite3 support in Onion")
 set(ONION_EXAMPLES FALSE CACHE BOOL "Enable or disable building examples of Onion")
 option(INSTALL_CLIENT "Install client binary" ON)
 option(SDSRV_USE_MUSL "link with musl c library" OFF)
 option(RUN_AUTO_TEST "run automated testing" OFF)
+option(VMBOX_BUILD "Build for vmbox Alpine deployment (installs manifest and scripts)" OFF)
+
+# Enable warnings as errors globally (disabled for vmbox builds due to musl header warnings)
+if(NOT VMBOX_BUILD)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
+endif()
 if(RUN_AUTO_TEST)
 	add_definitions(-DDEBUG_TEST_MODE)
 endif()
@@ -67,6 +69,36 @@ install(CODE "
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stop-sysmgr.sh\")
   message(STATUS \"---------Automated Runtime test finished--------\")
 ")
+endif()
+
+# =============================================================================
+# vmbox Alpine Deployment (enabled with -DVMBOX_BUILD=ON)
+# =============================================================================
+# These install targets are specific to vmbox Alpine deployment and are
+# disabled by default to avoid affecting buildroot/openwrt builds.
+
+if(VMBOX_BUILD)
+    message(STATUS "VMBOX_BUILD enabled - installing manifest and startup scripts")
+
+    # Generate manifest.json from template
+    set(VMBOX_PROJECT_NAME "jsonrpc-tcp-srv")
+    configure_file(manifest.template.json
+                   ${CMAKE_CURRENT_BINARY_DIR}/manifest.json
+                   @ONLY)
+
+    # Install manifest
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/manifest.json
+            DESTINATION .)
+
+    # Install startup/shutdown scripts
+    install(PROGRAMS
+            scripts/start-services.sh
+            scripts/stop-services.sh
+            DESTINATION scripts)
+
+    # Install XMPP configuration files
+    install(FILES services/xmproxy/srv/xmpp-login.txt
+            DESTINATION etc/xmproxy)
 endif()
 
 #execute_process(COMMAND $BUILDOUT/bin/tcp-json-rpc-client --servertcpport=40001 --requests=$BUILDOUT/tests/sysmgr-test/requests.txt --responses=$BUILDOUT/tests/sysmgr-test/responses.txt --repeat=2000)
