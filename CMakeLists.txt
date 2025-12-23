@@ -94,6 +94,7 @@ if(VMBOX_BUILD)
     install(PROGRAMS
             scripts/start-services.sh
             scripts/stop-services.sh
+            scripts/restart-xmproxy.sh
             DESTINATION scripts)
 
     # Install XMPP configuration files

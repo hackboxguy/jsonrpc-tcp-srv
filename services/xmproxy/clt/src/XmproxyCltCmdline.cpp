@@ -10,8 +10,8 @@ XmproxyCltCmdline::XmproxyCltCmdline() {
       char *)"--asynctasksts             [read async-task-in-progress if any]");
   CmdlineHelper.insert_options_entry((char *)"connectsts", optional_argument,
                                      EJSON_XMPROXY_RPC_GET_ONLINE_STATUS);
-  CmdlineHelper.insert_help_entry((char *)"--connectsts               [get the "
-                                          "online status of xmpp connection]");
+  CmdlineHelper.insert_help_entry((char *)"--connectsts[=online/offline] [get/set "
+                                          "xmpp connection status]");
   CmdlineHelper.insert_options_entry((char *)"relaymsg", optional_argument,
                                      EJSON_XMPROXY_RPC_SET_SEND_MESSAGE);
   CmdlineHelper.insert_help_entry(
