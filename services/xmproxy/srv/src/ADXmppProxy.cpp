@@ -110,7 +110,8 @@ ADXmppProxy::parseBoshUrl(const std::string &url) {
 int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
                          std::string bkupadminbuddy, bool useBosh,
                          std::string boshUrl, std::string boshHost,
-                         bool tlsVerify, std::string saslMech) {
+                         bool tlsVerify, std::string saslMech,
+                         bool tlsEnabled) {
   if (j != NULL)
     return 0;
 
@@ -197,32 +198,43 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
     ConnectionTCPClient *conn0 = new ConnectionTCPClient(
         j->logInstance(),
         urlParts.host,  // IP address or hostname (e.g., 192.168.1.2)
-        urlParts.port   // Usually 443 for HTTPS
+        urlParts.port   // Usually 443 for HTTPS, 5281 for HTTP proxy
     );
 
-    // Wrap TCP with TLS layer for HTTPS (required for port 443)
-    ConnectionTLS *connTls = new ConnectionTLS(
-        j,       // ConnectionDataHandler (Client implements this)
-        conn0,   // Underlying TCP connection
-        j->logInstance()  // LogSink
-    );
+    // For HTTPS: wrap with TLS layer
+    // For HTTP: use raw TCP (external proxy like socat handles TLS)
+    ConnectionBase *connBase = conn0;  // Default to raw TCP
 
-    // Set server name for TLS SNI (Server Name Indication)
-    connTls->setServer(BoshHost);
+    if (urlParts.protocol == "https") {
+      // Wrap TCP with TLS layer for HTTPS
+      ConnectionTLS *connTls = new ConnectionTLS(
+          j,       // ConnectionDataHandler (Client implements this)
+          conn0,   // Underlying TCP connection
+          j->logInstance()  // LogSink
+      );
+      // Set server name for TLS SNI (Server Name Indication)
+      connTls->setServer(BoshHost);
+      connBase = connTls;
 
-    if (DebugLog || true) {
-      cout << "  TLS layer added for HTTPS, SNI host: " << BoshHost << endl;
+      if (DebugLog || true) {
+        cout << "  TLS layer added for HTTPS, SNI host: " << BoshHost << endl;
+      }
+    } else {
+      // HTTP mode - no TLS layer (external proxy handles TLS)
+      if (DebugLog || true) {
+        cout << "  HTTP mode - no TLS layer (external proxy handles TLS)" << endl;
+      }
     }
 
     // Wrap with BOSH layer (use domain name for Host header)
     // Constructor: ConnectionBOSH(ConnectionDataHandler*, ConnectionBase*, LogSink&, boshHost, xmppServer, xmppPort)
     ConnectionBOSH *conn1 = new ConnectionBOSH(
         j,                // Client (implements ConnectionDataHandler)
-        connTls,          // TLS-wrapped TCP connection (not raw TCP)
+        connBase,         // TCP connection (raw for HTTP, TLS-wrapped for HTTPS)
         j->logInstance(), // LogSink
         BoshHost,         // BOSH hostname (for HTTP Host header - domain name)
         BoshHost,         // XMPP server name (domain name)
-        urlParts.port     // Use actual connection port, not virtual 5222
+        urlParts.port     // Use actual connection port
     );
 
     // Set the BOSH path (from the parsed URL) - CRITICAL for HTTP 400 fix
@@ -242,17 +254,20 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
     // Attach custom connection to client
     j->setConnectionImpl(conn1);
 
-    // TLS settings
-    if (TlsVerify) {
+    // TLS settings for BOSH
+    if (!tlsEnabled) {
+      // XMPP TLS disabled - for HTTP BOSH with external TLS proxy
+      j->setTls(TLSPolicy::TLSDisabled);
+      if (DebugLog || true)
+        cout << "  TLS: Disabled (xmpptls=false, external TLS proxy)" << endl;
+    } else if (TlsVerify) {
       j->setTls(TLSPolicy::TLSRequired);
       if (DebugLog)
         cout << "  TLS: Required with certificate validation" << endl;
     } else {
       j->setTls(TLSPolicy::TLSOptional);
       if (DebugLog || true)
-        cout << "  TLS: Optional (certificate validation DISABLED for corporate "
-                "networks)"
-             << endl;
+        cout << "  TLS: Optional (certificate validation DISABLED)" << endl;
     }
 
     if (DebugLog || true)

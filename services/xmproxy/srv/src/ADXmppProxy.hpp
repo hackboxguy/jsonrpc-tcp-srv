@@ -88,7 +88,8 @@ public:
   int connect(char *user, char *password, std::string adminbuddy = "",
               std::string bkupadminbuddy = "", bool useBosh = false,
               std::string boshUrl = "", std::string boshHost = "",
-              bool tlsVerify = true, std::string saslMech = "");
+              bool tlsVerify = true, std::string saslMech = "",
+              bool tlsEnabled = true);
   std::string extractServerFromJID(const std::string &jid);
 
   // Helper function for BOSH URL parsing

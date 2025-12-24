@@ -222,6 +222,7 @@ class XmppMgr : public ADXmppConsumer,
   std::string XmppBoshUrl;
   std::string XmppBoshHost;
   bool XmppTlsVerify;
+  bool XmppTlsEnabled;  // Controls XMPP-level TLS (STARTTLS) - disable for HTTP BOSH with external TLS proxy
   std::string XmppSaslMech; // SASL mechanism: "scram-sha-1" or empty for default
 #ifdef USE_CXMPP_LIB
   CXmppProxy XmppProxy; // xmpp client

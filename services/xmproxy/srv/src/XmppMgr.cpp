@@ -141,6 +141,7 @@ XmppMgr::XmppMgr() //: AckToken(0)
   XmppBoshUrl = "";
   XmppBoshHost = "";
   XmppTlsVerify = true;
+  XmppTlsEnabled = true;  // Default: XMPP TLS (STARTTLS) enabled
   XmppSaslMech = "";
 #ifdef USE_AI_BOT
   botcli = NULL;
@@ -343,7 +344,8 @@ int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
       XmppProxy.connect((char *)XmppUserName.c_str(),
                         (char *)XmppUserPw.c_str(), XmppAdminBuddy,
                         XmppBkupAdminBuddy, XmppUseBosh, XmppBoshUrl,
-                        XmppBoshHost, XmppTlsVerify, XmppSaslMech);
+                        XmppBoshHost, XmppTlsVerify, XmppSaslMech,
+                        XmppTlsEnabled);
     // cout<<"XmppMgr::thread_callback_function: exited xmpp connect"<<endl;
     // XmppProxy.disconnect();
     if (XmppProxy.getForcedDisconnect())
@@ -753,6 +755,12 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
       if (DebugLog || !XmppSaslMech.empty())
         cout << "XmppMgr::Start: SASL Mechanism: "
              << (XmppSaslMech.empty() ? "default" : XmppSaslMech) << endl;
+    } else if (key == "xmpptls:") {
+      linestream >> value;
+      XmppTlsEnabled = !(value == "false" || value == "False" || value == "FALSE");
+      if (DebugLog || XmppUseBosh)
+        cout << "XmppMgr::Start: XMPP TLS (STARTTLS): "
+             << (XmppTlsEnabled ? "enabled" : "disabled") << endl;
     }
   }
 
