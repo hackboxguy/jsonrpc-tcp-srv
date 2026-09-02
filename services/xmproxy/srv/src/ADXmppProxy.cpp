@@ -103,67 +103,41 @@ ADXmppProxy::parseBoshUrl(const std::string &url) {
   return result;
 }
 /*****************************************************************************/
-int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
-                         std::string bkupadminbuddy, bool useBosh,
-                         std::string boshUrl, std::string boshHost,
-                         bool tlsVerify, std::string saslMech,
-                         bool tlsEnabled) {
-  if (j != NULL)
-    return 0;
-
-  SessionRunning = true;
-  SessionAuthenticated = false;
-  DisconnectRequested = false;
-  if (DebugLog)
-    cout << "ADXmppProxy::connect: Entering===>" << endl;
-
-  {
-    std::lock_guard<std::mutex> lock(rosterMutex);
-    AdminBuddy = adminbuddy;
-    BkupAdminBuddy = bkupadminbuddy;
+// Build a gloox Client for the account: SASL preferences, then either the
+// BOSH stack (TCP -> optional TLS -> BOSH) or plain TCP. The caller registers
+// its listeners and runs the connection.
+Client *ADXmppProxy::create_client(const XmppAccount &account, bool debugLog) {
+  std::string server = account.server;
+  if (server.empty()) {
+    size_t atPos = account.user.find('@');
+    server = (atPos == std::string::npos) ? account.user
+                                          : account.user.substr(atPos + 1);
   }
-  UseBOSH = useBosh;
-  BoshURL = boshUrl;
-  BoshHost = boshHost;
-  TlsVerify = tlsVerify;
-  SaslMech = saslMech;
+  std::string boshHost = account.boshHost;
+  if (account.useBosh && boshHost.empty())
+    boshHost = server;
 
-  std::string server = extractServerFromJID(user);
-
-  // If boshHost not provided, use server from JID
-  if (UseBOSH && BoshHost.empty()) {
-    BoshHost = server;
-  }
-
-  JID jid(user);
+  JID jid(account.user);
   // Note: Don't explicitly set server - let gloox parse it from the full JID
   // jid.setServer(server) can cause SCRAM authentication issues
-  if (DebugLog)
-    cout << "ADXmppProxy::connect: Using JID: " << jid.full()
-         << " (server: " << server << ")" << endl;
-
-  {
-    std::lock_guard<std::mutex> lock(clientMutex);
-    j = new Client(jid, password);
-  }
-  connected = true; // after creation of Client object, make this flag true
+  Client *j = new Client(jid, account.password);
 
   // Configure SASL mechanisms if specified
-  if (!SaslMech.empty()) {
-    if (SaslMech == "scram-sha-1") {
+  if (!account.saslMech.empty()) {
+    if (account.saslMech == "scram-sha-1") {
       // Disable SCRAM-SHA-1-PLUS to avoid channel binding issues
       // Use only SCRAM-SHA-1 (without channel binding)
       j->setSASLMechanisms(SaslMechAll ^ SaslMechScramSha1Plus);
       cout << "ADXmppProxy::connect: SASL mechanism set to SCRAM-SHA-1 "
               "(channel binding disabled)"
            << endl;
-    } else if (SaslMech == "scram-sha-1-plus") {
+    } else if (account.saslMech == "scram-sha-1-plus") {
       // Use only SCRAM-SHA-1-PLUS (with channel binding)
       j->setSASLMechanisms(SaslMechScramSha1Plus);
       cout << "ADXmppProxy::connect: SASL mechanism set to SCRAM-SHA-1-PLUS "
               "(channel binding enabled)"
            << endl;
-    } else if (SaslMech == "plain") {
+    } else if (account.saslMech == "plain") {
       // Use PLAIN mechanism (simple base64-encoded username/password)
       // Useful for testing credentials, but sends password in cleartext over
       // TLS
@@ -173,27 +147,28 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
            << endl;
     } else {
       cout << "ADXmppProxy::connect: Warning - Unknown SASL mechanism: "
-           << SaslMech << ", using default" << endl;
+           << account.saslMech << ", using default" << endl;
     }
   } else {
-    if (DebugLog)
+    if (debugLog)
       cout << "ADXmppProxy::connect: Using default SASL mechanisms" << endl;
   }
 
-  if (UseBOSH) {
+  if (account.useBosh) {
     // BOSH mode - tunnel XMPP over HTTP(S)
-    if (DebugLog || true) { // Always log BOSH attempts
+    if (debugLog || true) { // Always log BOSH attempts
       cout << "ADXmppProxy::connect: ========== BOSH MODE ENABLED =========="
            << endl;
-      cout << "  BOSH URL:      " << BoshURL << endl;
-      cout << "  BOSH Host:     " << BoshHost << endl;
-      cout << "  TLS Verify:    " << (TlsVerify ? "true" : "false") << endl;
+      cout << "  BOSH URL:      " << account.boshUrl << endl;
+      cout << "  BOSH Host:     " << boshHost << endl;
+      cout << "  TLS Verify:    " << (account.tlsVerify ? "true" : "false")
+           << endl;
     }
 
     // Parse BOSH URL into components
-    BoshUrlComponents urlParts = parseBoshUrl(BoshURL);
+    BoshUrlComponents urlParts = parseBoshUrl(account.boshUrl);
 
-    if (DebugLog || true) {
+    if (debugLog || true) {
       cout << "  Parsed URL:" << endl;
       cout << "    protocol:  " << urlParts.protocol << endl;
       cout << "    host:      " << urlParts.host << endl;
@@ -202,7 +177,7 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
     }
 
     // Set server FIRST (before creating connections) - needed for BOSH
-    j->setServer(BoshHost);
+    j->setServer(boshHost);
 
     // Disable compression for BOSH
     j->setCompression(false);
@@ -226,15 +201,15 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
                             j->logInstance() // LogSink
           );
       // Set server name for TLS SNI (Server Name Indication)
-      connTls->setServer(BoshHost);
+      connTls->setServer(boshHost);
       connBase = connTls;
 
-      if (DebugLog || true) {
-        cout << "  TLS layer added for HTTPS, SNI host: " << BoshHost << endl;
+      if (debugLog || true) {
+        cout << "  TLS layer added for HTTPS, SNI host: " << boshHost << endl;
       }
     } else {
       // HTTP mode - no TLS layer (external proxy handles TLS)
-      if (DebugLog || true) {
+      if (debugLog || true) {
         cout << "  HTTP mode - no TLS layer (external proxy handles TLS)"
              << endl;
       }
@@ -247,22 +222,22 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
         j,        // Client (implements ConnectionDataHandler)
         connBase, // TCP connection (raw for HTTP, TLS-wrapped for HTTPS)
         j->logInstance(), // LogSink
-        BoshHost,         // BOSH hostname (for HTTP Host header - domain name)
-        BoshHost,         // XMPP server name (domain name)
+        boshHost,         // BOSH hostname (for HTTP Host header - domain name)
+        boshHost,         // XMPP server name (domain name)
         urlParts.port     // Use actual connection port
     );
 
     // Set the BOSH path (from the parsed URL) - CRITICAL for HTTP 400 fix
     conn1->setPath(urlParts.path);
 
-    if (DebugLog || true) {
+    if (debugLog || true) {
       cout << "  BOSH path set to: " << urlParts.path << endl;
     }
 
     // Use HTTP Pipelining mode (single connection, avoids TLS pool issues)
     conn1->setMode(ConnectionBOSH::ModePipelining);
 
-    if (DebugLog || true) {
+    if (debugLog || true) {
       cout << "  BOSH mode: HTTP Pipelining (single connection)" << endl;
     }
 
@@ -270,33 +245,64 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
     j->setConnectionImpl(conn1);
 
     // TLS settings for BOSH
-    if (!tlsEnabled) {
+    if (!account.tlsEnabled) {
       // XMPP TLS disabled - for HTTP BOSH with external TLS proxy
       j->setTls(TLSPolicy::TLSDisabled);
-      if (DebugLog || true)
+      if (debugLog || true)
         cout << "  TLS: Disabled (xmpptls=false, external TLS proxy)" << endl;
-    } else if (TlsVerify) {
+    } else if (account.tlsVerify) {
       j->setTls(TLSPolicy::TLSRequired);
-      if (DebugLog)
+      if (debugLog)
         cout << "  TLS: Required with certificate validation" << endl;
     } else {
       j->setTls(TLSPolicy::TLSOptional);
-      if (DebugLog || true)
+      if (debugLog || true)
         cout << "  TLS: Optional (certificate validation DISABLED)" << endl;
     }
 
-    if (DebugLog || true)
+    if (debugLog || true)
       cout << "========================================================="
            << endl;
 
   } else {
     // Traditional TCP mode (existing behavior)
     j->setServer(server);
-    j->setPort(5222);
-    if (DebugLog)
-      cout << "ADXmppProxy::connect: TCP mode on port 5222, server: " << server
+    j->setPort(account.port > 0 ? account.port : 5222);
+    if (debugLog)
+      cout << "ADXmppProxy::connect: TCP mode on port "
+           << (account.port > 0 ? account.port : 5222) << ", server: " << server
            << endl;
   }
+  return j;
+}
+/*****************************************************************************/
+int ADXmppProxy::connect(const XmppAccount &account, std::string adminbuddy,
+                         std::string bkupadminbuddy) {
+  if (j != NULL)
+    return 0;
+
+  SessionRunning = true;
+  SessionAuthenticated = false;
+  DisconnectRequested = false;
+  if (DebugLog)
+    cout << "ADXmppProxy::connect: Entering===>" << endl;
+
+  {
+    std::lock_guard<std::mutex> lock(rosterMutex);
+    AdminBuddy = adminbuddy;
+    BkupAdminBuddy = bkupadminbuddy;
+  }
+  UseBOSH = account.useBosh;
+  BoshURL = account.boshUrl;
+  BoshHost = account.boshHost;
+  TlsVerify = account.tlsVerify;
+  SaslMech = account.saslMech;
+
+  {
+    std::lock_guard<std::mutex> lock(clientMutex);
+    j = create_client(account, DebugLog);
+  }
+  connected = true; // after creation of Client object, make this flag true
 
   // Common setup for both modes
   j->registerConnectionListener(this);
@@ -665,6 +671,48 @@ void ADXmppProxy::perform(const OutItem &item) {
     j->rosterManager()->unsubscribe(JID(item.to));
     break;
   }
+}
+/*****************************************************************************/
+namespace {
+// listener for probe_account(): records authentication, then hangs up
+class ProbeListener : public ConnectionListener {
+public:
+  Client *client;
+  bool authenticated;
+  bool finished;
+  ProbeListener(Client *c) : client(c), authenticated(false), finished(false) {}
+  virtual void onConnect() {
+    authenticated = true;
+    client->disconnect();
+  }
+  virtual void onDisconnect(ConnectionError e) { finished = true; }
+  virtual bool onTLSConnect(const CertInfo &info) { return true; }
+};
+} // namespace
+bool ADXmppProxy::probe_account(const XmppAccount &account, bool debugLog,
+                                int timeout_s) {
+  Client *pc = create_client(account, debugLog);
+  ProbeListener listener(pc);
+  pc->registerConnectionListener(&listener);
+  time_t deadline = time(NULL) + timeout_s;
+  if (pc->connect(false)) {
+    ConnectionError ce = ConnNoError;
+    while (ce == ConnNoError && !listener.finished && time(NULL) < deadline) {
+      ce = pc->recv(200000);
+      if (listener.authenticated && ce == ConnNoError) {
+        // disconnect() was issued from onConnect; give it one more poll
+        pc->recv(100000);
+        break;
+      }
+    }
+    if (!listener.finished)
+      pc->disconnect();
+  }
+  pc->removeConnectionListener(&listener);
+  delete pc;
+  XMLOG_DBG("xmpp: probe of %s %s", account.user.c_str(),
+            listener.authenticated ? "succeeded" : "failed");
+  return listener.authenticated;
 }
 /*****************************************************************************/
 void ADXmppProxy::mirror_roster_from(const Roster &roster) {

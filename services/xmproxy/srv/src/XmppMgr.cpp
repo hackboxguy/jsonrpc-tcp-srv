@@ -117,7 +117,10 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
 };
 /* ------------------------------------------------------------------------- */
 XmppMgr::XmppMgr() //: AckToken(0)
-{
+    : OnFallback(false), PrimaryAvailable(false), ProbeStop(false),
+      ProbeRunning(false) {
+  FallbackAfter = XMPP_DEFAULT_FALLBACK_AFTER;
+  PrimaryProbeSec = XMPP_DEFAULT_PRIMARY_PROBE_SEC;
   PingIntervalSec = XMPP_DEFAULT_PING_INTERVAL_SEC;
   PingMisses = XMPP_DEFAULT_PING_MISSES;
   ReconnectMinSec = XMPP_DEFAULT_RECONNECT_MIN_SEC;
@@ -156,8 +159,10 @@ XmppMgr::XmppMgr() //: AckToken(0)
   bboxSmsServerAddr = BBOXSMS_SERVER_ADDR;
 
   XmppProxy.attach_callback(this);
-  XmppClientThread.subscribe_thread_callback(this);
+  clientThreadID = XmppClientThread.subscribe_thread_callback(this);
   XmppClientThread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
+  probeThreadID = ProbeThread.subscribe_thread_callback(this);
+  ProbeThread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
 
   XmppCmdProcessThread.subscribe_thread_callback(this);
   XmppCmdProcessThread.set_thread_properties(THREAD_TYPE_MONOSHOT,
@@ -379,23 +384,62 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
 }
 /* ------------------------------------------------------------------------- */
 int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
-  // session loop with exponential backoff and jitter: a session that
-  // authenticated resets the backoff, repeated failures grow it up to
-  // ReconnectMaxSec
+  if (pObj->getID() == probeThreadID)
+    return probe_loop();
+  return session_loop();
+}
+void XmppMgr::set_active_jid(const std::string &jid) {
+  std::lock_guard<std::mutex> lock(activeMutex);
+  ActiveJid = jid;
+}
+std::string XmppMgr::get_active_jid() {
+  std::lock_guard<std::mutex> lock(activeMutex);
+  return ActiveJid;
+}
+// Session loop with exponential backoff and jitter. A session that
+// authenticated resets the backoff; repeated failures grow it up to
+// ReconnectMaxSec. With a fallback account configured, FallbackAfter
+// consecutive failures switch to the other account; while on the fallback the
+// probe thread watches the primary and ends the fallback session as soon as
+// the primary authenticates again.
+int XmppMgr::session_loop() {
   int failures = 0;
+  bool useFallback = false;
   unsigned int seed = (unsigned int)time(NULL) ^ (unsigned int)getpid();
   while (!XmppProxy.getForcedDisconnect()) {
+    bool switched = false;
     if (XmppProxy.getOnDemandDisconnect() == false) {
-      XMLOG_INF("xmpp: connecting as %s (attempt %d)", XmppUserName.c_str(),
+      const XmppAccount &acct = useFallback ? FallbackAccount : PrimaryAccount;
+      OnFallback = useFallback;
+      PrimaryAvailable = false;
+      set_active_jid(acct.user);
+      XMLOG_INF("xmpp: connecting as %s (%s account, attempt %d)",
+                acct.user.c_str(), useFallback ? "fallback" : "primary",
                 failures + 1);
-      XmppProxy.connect(
-          (char *)XmppUserName.c_str(), (char *)XmppUserPw.c_str(),
-          XmppAdminBuddy, XmppBkupAdminBuddy, XmppUseBosh, XmppBoshUrl,
-          XmppBoshHost, XmppTlsVerify, XmppSaslMech, XmppTlsEnabled);
+      XmppProxy.connect(acct, XmppAdminBuddy, XmppBkupAdminBuddy);
       if (XmppProxy.last_session_authenticated())
         failures = 0;
       else
         failures++;
+      if (useFallback && PrimaryAvailable) {
+        XMLOG_WRN("xmpp: primary account reachable again, switching back to %s",
+                  PrimaryAccount.user.c_str());
+        useFallback = false;
+        failures = 0;
+        switched = true;
+      } else if (FallbackAccount.configured() && failures >= FallbackAfter) {
+        useFallback = !useFallback;
+        failures = 0;
+        switched = true;
+        if (useFallback)
+          XMLOG_WRN("xmpp: %d consecutive failures on primary, failing over "
+                    "to %s",
+                    FallbackAfter, FallbackAccount.user.c_str());
+        else
+          XMLOG_WRN("xmpp: %d consecutive failures on fallback, trying "
+                    "primary %s again",
+                    FallbackAfter, PrimaryAccount.user.c_str());
+      }
     }
     if (XmppProxy.getForcedDisconnect())
       break;
@@ -406,6 +450,8 @@ int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
     if (delay_ms > ReconnectMaxSec * 1000)
       delay_ms = ReconnectMaxSec * 1000;
     delay_ms += rand_r(&seed) % 1000; // jitter, avoids synchronized retries
+    if (switched)
+      delay_ms = 200; // account switch: connect right away
     if (XmppProxy.getOnDemandDisconnect())
       delay_ms = 1000; // offline on request: just poll the flag
     else
@@ -416,7 +462,34 @@ int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
       slept += 200;
     }
   }
+  OnFallback = false;
   XMLOG_INF("xmpp: session loop stopped");
+  return 0;
+}
+// Probe thread: idle unless a fallback session is up; then authenticates
+// against the primary every PrimaryProbeSec with a throwaway client and, on
+// success, ends the fallback session so the session loop switches back.
+int XmppMgr::probe_loop() {
+  ProbeRunning = true;
+  time_t last = time(NULL);
+  while (!ProbeStop && !XmppProxy.getForcedDisconnect()) {
+    usleep(500000);
+    if (!OnFallback || !XmppProxy.get_connected_status()) {
+      last = time(NULL);
+      continue;
+    }
+    if (time(NULL) - last < PrimaryProbeSec)
+      continue;
+    last = time(NULL);
+    XMLOG_INF("xmpp: probing primary account %s", PrimaryAccount.user.c_str());
+    if (ADXmppProxy::probe_account(PrimaryAccount, DebugLog)) {
+      PrimaryAvailable = true;
+      XmppProxy.disconnect(); // session loop notices PrimaryAvailable
+    } else {
+      XMLOG_INF("xmpp: primary still unreachable, staying on fallback");
+    }
+  }
+  ProbeRunning = false;
   return 0;
 }
 /* ------------------------------------------------------------------------- */
@@ -753,104 +826,97 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   std::ifstream file(accountFilePath.c_str());
   std::string line, key;
 
-  // Parse config file using key-value pairs
-  // All fields after user: and pw: are optional
+  // Parse config file as "key: value" lines. Keys prefixed with "fallback"
+  // describe the optional fallback account; "#" starts a comment.
   while (std::getline(file, line)) {
-    if (line.size() == 0)
-      continue; // skip empty lines
-
+    if (line.size() == 0 || line[0] == '#')
+      continue;
     stringstream linestream(line);
     std::string key, value;
-    linestream >> key; // Get the key (user:, pw:, adminbuddy:, etc.)
-
-    if (key == "user:") {
-      linestream >> XmppUserName;
-      if (XmppUserName.size() <= 0) {
-        cout << "XmppMgr::Start: Error - username is required" << endl;
-        return RPC_SRV_RESULT_FAIL;
-      }
-    } else if (key == "pw:") {
-      linestream >> XmppUserPw;
-      if (XmppUserPw.size() <= 0) {
-        cout << "XmppMgr::Start: Error - password is required" << endl;
-        return RPC_SRV_RESULT_FAIL;
-      }
-    } else if (key == "adminbuddy:") {
-      linestream >> XmppAdminBuddy;
-      if (DebugLog && XmppAdminBuddy.size() > 0)
-        cout << "XmppMgr::Start: Admin buddy: " << XmppAdminBuddy << endl;
+    linestream >> key >> value;
+    if (key.empty() || key[key.size() - 1] != ':')
+      continue;
+    if (key == "adminbuddy:") {
+      XmppAdminBuddy = value;
     } else if (key == "bkupadminbuddy:") {
-      linestream >> XmppBkupAdminBuddy;
-      if (DebugLog && XmppBkupAdminBuddy.size() > 0)
-        cout << "XmppMgr::Start: Backup admin buddy: " << XmppBkupAdminBuddy
-             << endl;
-    } else if (key == "bosh:") {
-      linestream >> value;
-      XmppUseBosh = (value == "true" || value == "True" || value == "TRUE");
-      if (DebugLog || XmppUseBosh)
-        cout << "XmppMgr::Start: BOSH mode: "
-             << (XmppUseBosh ? "enabled" : "disabled") << endl;
-    } else if (key == "boshurl:") {
-      linestream >> XmppBoshUrl;
-      if (DebugLog || XmppUseBosh)
-        cout << "XmppMgr::Start: BOSH URL: " << XmppBoshUrl << endl;
-    } else if (key == "boshhost:") {
-      linestream >> XmppBoshHost;
-      if (DebugLog || XmppUseBosh)
-        cout << "XmppMgr::Start: BOSH Host: " << XmppBoshHost << endl;
-    } else if (key == "tlsverify:") {
-      linestream >> value;
-      XmppTlsVerify =
-          !(value == "false" || value == "False" || value == "FALSE");
-      if (DebugLog || XmppUseBosh)
-        cout << "XmppMgr::Start: TLS Verify: "
-             << (XmppTlsVerify ? "enabled" : "disabled") << endl;
-    } else if (key == "saslmech:") {
-      linestream >> XmppSaslMech;
-      if (DebugLog || !XmppSaslMech.empty())
-        cout << "XmppMgr::Start: SASL Mechanism: "
-             << (XmppSaslMech.empty() ? "default" : XmppSaslMech) << endl;
+      XmppBkupAdminBuddy = value;
     } else if (key == "pinginterval:") {
-      linestream >> value;
       if (atoi(value.c_str()) >= 10)
         PingIntervalSec = atoi(value.c_str());
     } else if (key == "pingmisses:") {
-      linestream >> value;
       if (atoi(value.c_str()) >= 1)
         PingMisses = atoi(value.c_str());
     } else if (key == "reconnectmin:") {
-      linestream >> value;
       if (atoi(value.c_str()) >= 1)
         ReconnectMinSec = atoi(value.c_str());
     } else if (key == "reconnectmax:") {
-      linestream >> value;
       if (atoi(value.c_str()) >= 1)
         ReconnectMaxSec = atoi(value.c_str());
     } else if (key == "asynctimeout:") {
-      linestream >> value;
       if (atoi(value.c_str()) >= 10)
         AsyncTimeoutSec = atoi(value.c_str());
-    } else if (key == "xmpptls:") {
-      linestream >> value;
-      XmppTlsEnabled =
-          !(value == "false" || value == "False" || value == "FALSE");
-      if (DebugLog || XmppUseBosh)
-        cout << "XmppMgr::Start: XMPP TLS (STARTTLS): "
-             << (XmppTlsEnabled ? "enabled" : "disabled") << endl;
+    } else if (key == "fallbackafter:") {
+      if (atoi(value.c_str()) >= 1)
+        FallbackAfter = atoi(value.c_str());
+    } else if (key == "primaryprobe:") {
+      if (atoi(value.c_str()) >= 5)
+        PrimaryProbeSec = atoi(value.c_str());
+    } else {
+      bool fb = key.compare(0, 8, "fallback") == 0;
+      std::string k = fb ? key.substr(8) : key;
+      XmppAccount &acct = fb ? FallbackAccount : PrimaryAccount;
+      bool truth = (value == "true" || value == "True" || value == "TRUE");
+      bool falsity = (value == "false" || value == "False" || value == "FALSE");
+      if (k == "user:")
+        acct.user = value;
+      else if (k == "pw:")
+        acct.password = value;
+      else if (k == "server:")
+        acct.server = value;
+      else if (k == "port:")
+        acct.port = atoi(value.c_str());
+      else if (k == "bosh:")
+        acct.useBosh = truth;
+      else if (k == "boshurl:")
+        acct.boshUrl = value;
+      else if (k == "boshhost:")
+        acct.boshHost = value;
+      else if (k == "tlsverify:")
+        acct.tlsVerify = !falsity;
+      else if (k == "saslmech:")
+        acct.saslMech = value;
+      else if (k == "xmpptls:")
+        acct.tlsEnabled = !falsity;
+      else
+        XMLOG_WRN("login file: unknown key '%s' ignored", key.c_str());
     }
   }
 
   // Validate required fields
-  if (XmppUserName.size() <= 0) {
-    cout << "XmppMgr::Start: Error - 'user:' field is required in config file"
+  if (!PrimaryAccount.configured()) {
+    cout << "XmppMgr::Start: Error - 'user:' and 'pw:' are required in the "
+            "config file"
          << endl;
     return RPC_SRV_RESULT_FAIL;
   }
-  if (XmppUserPw.size() <= 0) {
-    cout << "XmppMgr::Start: Error - 'pw:' field is required in config file"
-         << endl;
-    return RPC_SRV_RESULT_FAIL;
+  if ((!FallbackAccount.user.empty() || !FallbackAccount.password.empty()) &&
+      !FallbackAccount.configured()) {
+    XMLOG_WRN("login file: fallback account needs both fallbackuser and "
+              "fallbackpw, ignoring it");
+    FallbackAccount = XmppAccount();
   }
+  XmppUserName = PrimaryAccount.user;
+  XmppUserPw = PrimaryAccount.password;
+  XmppUseBosh = PrimaryAccount.useBosh;
+  XmppTlsVerify = PrimaryAccount.tlsVerify;
+  set_active_jid(PrimaryAccount.user);
+  if (PrimaryAccount.useBosh)
+    XMLOG_INF("xmpp: BOSH mode, url %s host %s", PrimaryAccount.boshUrl.c_str(),
+              PrimaryAccount.boshHost.c_str());
+  if (FallbackAccount.configured())
+    XMLOG_INF("xmpp: fallback account %s after %d failures, primary probed "
+              "every %d s",
+              FallbackAccount.user.c_str(), FallbackAfter, PrimaryProbeSec);
 
   file.close();
 
@@ -862,23 +928,28 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
             "asynctimeout=%ds",
             XmppUserName.c_str(), XmppAdminBuddy.c_str(), PingIntervalSec,
             PingMisses, ReconnectMinSec, ReconnectMaxSec, AsyncTimeoutSec);
-  if (!XmppTlsVerify)
+  if (!PrimaryAccount.tlsVerify || !FallbackAccount.tlsVerify)
     XMLOG_WRN("xmpp: tlsverify is false, server certificate is NOT checked");
 
   XmppClientThread.start_thread();
+  if (FallbackAccount.configured())
+    ProbeThread.start_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::Stop() {
   XMLOG_INF("xmpp: shutdown requested");
   XmppProxy.setForcedDisconnect();
+  ProbeStop = true;
   XmppProxy.disconnect(); // bounded wait for the session to end
   // let the session loop exit by itself before the thread is torn down
   int waited = 0;
-  while (XmppProxy.is_session_running() && waited < 3000) {
+  while ((XmppProxy.is_session_running() || ProbeRunning) && waited < 3000) {
     usleep(100000);
     waited += 100;
   }
   XmppClientThread.stop_thread();
+  if (FallbackAccount.configured())
+    ProbeThread.stop_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::set_online_status(bool status) {
@@ -1843,10 +1914,12 @@ RPC_SRV_RESULT XmppMgr::RewriteAliasList(std::string listFile) {
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_account_name(std::string msg,
                                               std::string &returnval) {
-  if (XmppUserName.size() <= 0)
+  std::string jid =
+      get_active_jid(); // primary or fallback, whichever is in use
+  if (jid.size() <= 0)
     returnval = "none";
   else
-    returnval = XmppUserName;
+    returnval = jid;
   return RPC_SRV_RESULT_SUCCESS;
 }
 /* ------------------------------------------------------------------------- */

@@ -7,3 +7,13 @@ adminbuddy: example-buddy@exampleserver
 # reconnectmin: 2      first reconnect delay in seconds (doubles per failure, plus jitter)
 # reconnectmax: 60     upper bound of the reconnect delay in seconds
 # asynctimeout: 300    seconds before an unanswered async command is reported as Timeout
+# server: xmpp.example.org   optional host override (default: domain of user)
+# port: 5222                 optional port override
+# fallback account, used after fallbackafter consecutive failed connections;
+# the primary is probed every primaryprobe seconds and used again once it answers
+# fallbackuser: chatbot@backup.example.org
+# fallbackpw: secret
+# fallbackserver: backup.example.org
+# fallbackport: 5222
+# fallbackafter: 3
+# primaryprobe: 300

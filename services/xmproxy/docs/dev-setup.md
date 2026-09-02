@@ -50,12 +50,17 @@ The runner:
      `utils/tests/xmproxy-test/`),
    - stress (`test_stress.py`): admin and guest each send 250 commands while
      Prosody is restarted twice; passes only with zero lost or extra replies,
+   - failover (`test_failover.py`): primary stopped, bot answers as the
+     fallback account on the second server; primary started, bot returns;
+     both stopped then primary started, bot returns,
    - resilience (`test_resilience.py`): bot back online after a server
      restart, async completion after sysmgr is killed and restarted, and
      SIGTERM exit within 5 s. Runs last because it stops xmproxysrv.
 6. checks the daemons are still alive, then stops everything.
 
-`--quick` skips the stress and resilience groups (about 2 minutes saved).
+`--quick` skips the stress, failover and resilience groups (about 4 minutes
+saved). `--install DIR` runs the daemons from another install tree, for
+example a sanitizer build, and reports sanitizer output found in the logs.
 
 `--keep` leaves the rig and daemons running so you can chat with the bot from
 any XMPP client by logging in as `admin@localhost` (password in
@@ -85,10 +90,17 @@ case in `cases.json`.
 
 ## Test rig details
 
-- Server: `prosody/prosody:latest` (0.11.9), config in `tests/rig/prosody.cfg.lua`.
-  TLS and registration are disabled, plaintext SASL is allowed, offline
-  storage is on. The container is recreated on every run, so roster state
-  does not leak between runs.
+- Servers: two `prosody/prosody:latest` (0.11.9) containers with the config
+  in `tests/rig/prosody.cfg.lua`, both serving the domain `localhost`:
+  the primary on port 5222 (accounts bot, admin, guest) and the fallback on
+  port 5223 (accounts bot2, admin, guest). TLS and registration are
+  disabled, plaintext SASL is allowed, offline storage is on. Containers are
+  recreated on every run, so roster state does not leak between runs.
+  `rig.sh stop-primary|start-primary|stop-fallback|start-fallback` toggle
+  them for failover tests.
+- The fixture login file points the bot at the primary with the fallback
+  account on the second server, `fallbackafter 5` and `primaryprobe 10`, and
+  a fast reconnect (1 to 4 s) so tests run quickly.
 - Client: `tests/xmppclient.py`, a small slixmpp wrapper. `ask()` sends one
   message and collects replies until the bot has been quiet for 1.5 s.
 - Ports: Prosody 5222, sysmgr 40001, xmproxysrv 40005. All on 127.0.0.1.
@@ -97,7 +109,18 @@ case in `cases.json`.
 
 Optional keys in `xmpp-login.txt`, all with safe defaults: `pinginterval`
 (90 s), `pingmisses` (3), `reconnectmin` (2 s), `reconnectmax` (60 s),
-`asynctimeout` (300 s). See the comments in `srv/xmpp-login.txt`.
+`asynctimeout` (300 s), `server` and `port` (override the host and port
+derived from the JID). See the comments in `srv/xmpp-login.txt`.
+
+Fallback account (bucket 2): every account key also exists with the
+`fallback` prefix (`fallbackuser`, `fallbackpw`, `fallbackserver`,
+`fallbackport`, `fallbackbosh`, `fallbackboshurl`, `fallbackboshhost`,
+`fallbacktlsverify`, `fallbacksaslmech`, `fallbackxmpptls`). After
+`fallbackafter` (3) consecutive failed connections the daemon logs in with
+the fallback; while on it, a probe thread authenticates against the primary
+every `primaryprobe` (300 s) seconds and switches back as soon as that
+succeeds. If the fallback fails `fallbackafter` times too, the daemon tries
+the primary again. The `account` chat command reports the account in use.
 
 Log lines carry a timestamp and level. `--loglevel=error|warn|info|debug`
 selects the level; `--debuglog` still enables everything including gloox's

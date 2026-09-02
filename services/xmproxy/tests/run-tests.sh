@@ -1,7 +1,10 @@
 #!/bin/bash
 # One-command test run for xmproxysrv against the local rig.
 #
-#   run-tests.sh [--no-build] [--keep] [--record] [--only NAME] [--quick]
+#   run-tests.sh [--no-build] [--keep] [--record] [--only NAME] [--quick] [--install DIR]
+#
+# --install DIR runs the daemons from another install tree (for example a
+# sanitizer build) and implies --no-build.
 #
 # Steps: build (unless --no-build), start Prosody rig, start sysmgr and
 # xmproxysrv with test fixtures, wait until the bot is online, run
@@ -9,8 +12,9 @@
 #   2. guest access baseline    (test_guest_access.py)
 #   3. TCP JSON-RPC regression  (tcp-json-rpc-client with utils/tests/xmproxy-test)
 #   4. stress: two senders while the XMPP server restarts (test_stress.py)
-#   5. resilience: server restart, peer restart, SIGTERM (test_resilience.py)
-# then stop everything (unless --keep). --quick skips groups 4 and 5.
+#   5. failover to the fallback account and back (test_failover.py)
+#   6. resilience: server restart, peer restart, SIGTERM (test_resilience.py)
+# then stop everything (unless --keep). --quick skips groups 4 to 6.
 # Exit code is non-zero on any failure.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -25,13 +29,14 @@ while [ $# -gt 0 ]; do
         --no-build) BUILD=0 ;;
         --keep) KEEP=1 ;;
         --quick) QUICK=1 ;;
+        --install) shift; INSTALL="$1"; BUILD=0 ;;
         --record) EXTRA+=(--record) ;;
         --only) shift; EXTRA+=(--only "$1") ;;
         *) echo "unknown option $1"; exit 2 ;;
     esac; shift
 done
 source "$HERE/rig/accounts.env"
-export XMPP_HOST XMPP_PORT XMPP_DOMAIN ADMIN_PW GUEST_PW
+export XMPP_HOST XMPP_PORT XMPP_PORT2 XMPP_DOMAIN ADMIN_PW GUEST_PW
 export LD_LIBRARY_PATH="$INSTALL/lib:${LD_LIBRARY_PATH:-}"
 XMPROXY_PORT=40005
 FAILS=0
@@ -107,15 +112,25 @@ if [ ${#EXTRA[@]} -eq 0 ]; then
     echo "$TCPOUT" | grep -q "mismatch: 0" && echo "$TCPOUT" | grep -q "received: 7" || FAILS=$((FAILS+1))
 
     if [ "$QUICK" = 0 ]; then
-        say "4/5 stress with server restarts"
+        say "4/6 stress with server restarts"
         timeout 600 "$VENV/bin/python" "$HERE/test_stress.py" || FAILS=$((FAILS+1))
 
-        say "5/5 resilience (server restart, peer restart, SIGTERM)"
+        say "5/6 failover to fallback account and back"
+        RUN_DIR="$RUN" timeout 600 "$VENV/bin/python" "$HERE/test_failover.py" || FAILS=$((FAILS+1))
+
+        say "6/6 resilience (server restart, peer restart, SIGTERM)"
         # runs last: it stops xmproxysrv with SIGTERM
         RUN_DIR="$RUN" SYSMGR_BIN="$INSTALL/bin/sysmgr" XMPROXY_PORT=$XMPROXY_PORT \
             timeout 300 "$VENV/bin/python" "$HERE/test_resilience.py" || FAILS=$((FAILS+1))
         RESILIENCE_RAN=1
     fi
+fi
+
+say "sanitizer reports"
+if grep -l "Sanitizer\|runtime error" "$RUN"/sysmgr.log "$RUN"/xmproxysrv.log 2>/dev/null; then
+    grep -h -A3 "ERROR: \|WARNING: ThreadSanitizer\|SUMMARY" "$RUN"/sysmgr.log "$RUN"/xmproxysrv.log | head -40; FAILS=$((FAILS+1))
+else
+    echo "none"
 fi
 
 say "daemon health"

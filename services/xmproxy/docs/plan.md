@@ -116,8 +116,20 @@ Acceptance
 - S3 targets met in the rig.
 
 Decisions to verify at checkpoint
-- Q2: fallback on the same server versus a different server.
-- Failure threshold N and probe interval defaults.
+- Q2: fallback on the same server versus a different server. Implemented so
+  that both work: the fallback has its own optional `fallbackserver` and
+  `fallbackport`; without them the JID domain decides.
+- Failure threshold N and probe interval defaults: `fallbackafter` 3,
+  `primaryprobe` 300 s (rig uses 5 and 10 s).
+- When the fallback also fails N times the daemon alternates back to the
+  primary, so a device never gets stuck on a dead fallback.
+- The probe uses its own throwaway gloox client on a separate thread, so the
+  fallback session stays up until the primary is confirmed reachable.
+
+Status: done 2026-09-02 on branch `m2m-extension`. Rig result: on the
+fallback 19.5 s after the primary went down, back on the primary 13.1 s after
+it returned, recovery after both servers were down 13.1 s after the primary
+returned. `account` now reports the account in use.
 
 ## Bucket 3 — Roles and ACL
 

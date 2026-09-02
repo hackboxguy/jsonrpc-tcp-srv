@@ -1,3 +1,13 @@
 user: bot@localhost
 pw: botpw-test
 adminbuddy: admin@localhost
+# fast reconnect for the rig; production defaults are 2..60 s
+reconnectmin: 1
+reconnectmax: 4
+# fallback account on the second rig server (bucket 2)
+fallbackuser: bot2@localhost
+fallbackpw: botpw-test
+fallbackserver: 127.0.0.1
+fallbackport: 5223
+fallbackafter: 5
+primaryprobe: 10

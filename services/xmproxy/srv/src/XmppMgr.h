@@ -32,6 +32,10 @@ using namespace std;
 #define XMPP_DEFAULT_ASYNC_TIMEOUT_SEC 300
 #define XMPP_MAX_PENDING_CMDS 64 // bounded command queue (P1)
 #define XMPP_MAX_SLEEP_SEC 30    // cap for the sleep command (P1)
+#define XMPP_DEFAULT_FALLBACK_AFTER                                            \
+  3 // consecutive failures before switching account
+#define XMPP_DEFAULT_PRIMARY_PROBE_SEC                                         \
+  300 // probe period for the primary while on fallback
 #define GITHUB_FMW_DOWNLOAD_FOLDER                                             \
   "http://github.com/hackboxguy/downloads/raw/master/"
 // #define BRBOX_SYS_CONFIG_FILE_PATH "/boot/sysconfig.txt"
@@ -258,6 +262,26 @@ class XmppMgr : public ADXmppConsumer,
 #else
   ADXmppProxy XmppProxy; // xmpp client
 #endif
+  // primary and optional fallback account (login file keys with the
+  // "fallback" prefix). After FallbackAfter consecutive failures the session
+  // loop switches account; while on the fallback, ProbeThread probes the
+  // primary every PrimaryProbeSec and triggers the switch back.
+  XmppAccount PrimaryAccount;
+  XmppAccount FallbackAccount;
+  int FallbackAfter;
+  int PrimaryProbeSec;
+  std::atomic<bool> OnFallback;
+  std::atomic<bool> PrimaryAvailable; // set by the probe thread
+  std::atomic<bool> ProbeStop;
+  std::atomic<bool> ProbeRunning;
+  ADThread ProbeThread;
+  int clientThreadID;
+  int probeThreadID;
+  std::mutex activeMutex;
+  std::string ActiveJid;
+  void set_active_jid(const std::string &jid);
+  int session_loop();
+  int probe_loop();
 
   std::string AliasListFile;
   typedef std::map<std::string, std::string> Alias;
@@ -443,6 +467,10 @@ public:
   inline bool get_connected_status() {
     return XmppProxy.get_connected_status();
   };
+  std::string get_active_jid();
+  std::string get_primary_jid() { return PrimaryAccount.user; }
+  std::string get_fallback_jid() { return FallbackAccount.user; }
+  bool is_on_fallback() { return OnFallback; }
   RPC_SRV_RESULT
   set_online_status(bool status); // user set online/offline status via rpc
   RPC_SRV_RESULT proc_cmd_send_message(

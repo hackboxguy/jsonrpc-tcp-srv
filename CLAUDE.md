@@ -253,8 +253,11 @@ xmproxysrv [OPTIONS]
   --loglevel=<level>         # error|warn|info|debug (default info)
 ```
 
-Optional login-file keys: `pinginterval`, `pingmisses`, `reconnectmin`,
-`reconnectmax`, `asynctimeout` (see `services/xmproxy/srv/xmpp-login.txt`).
+Optional login-file keys: `server`, `port`, `pinginterval`, `pingmisses`,
+`reconnectmin`, `reconnectmax`, `asynctimeout`, and a fallback account via
+`fallbackuser`, `fallbackpw` (plus the same `fallback`-prefixed connection
+keys), `fallbackafter`, `primaryprobe` (see
+`services/xmproxy/srv/xmpp-login.txt` and `services/xmproxy/docs/dev-setup.md`).
 
 Tests and the local XMPP rig: `services/xmproxy/tests/run-tests.sh`, documented
 in `services/xmproxy/docs/dev-setup.md`. Product requirements and the bucket

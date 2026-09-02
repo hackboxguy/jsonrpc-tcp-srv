@@ -90,6 +90,23 @@ public:
 #define ADXMPP_DISCONNECT_WAIT_MS 5000
 #define ADXMPP_OUTBOUND_QUEUE_MAX 512
 
+// one XMPP account and how to reach it (primary or fallback)
+struct XmppAccount {
+  std::string user; // full JID
+  std::string password;
+  std::string server; // optional host override (default: JID domain)
+  int port;           // optional port override (default 5222)
+  bool useBosh;
+  std::string boshUrl;
+  std::string boshHost;
+  bool tlsVerify;
+  std::string saslMech;
+  bool tlsEnabled;
+  XmppAccount() : port(0), useBosh(false), tlsVerify(true), tlsEnabled(true) {}
+  bool configured() const { return !user.empty() && !password.empty(); }
+};
+#define ADXMPP_PROBE_TIMEOUT_S 30
+
 class ADXmppProxy : public MessageSessionHandler,
                     ConnectionListener,
                     LogHandler,
@@ -103,11 +120,13 @@ public:
   ADXmppProxy();
   ~ADXmppProxy();
   // Blocks for the whole session; returns when the connection ends.
-  int connect(char *user, char *password, std::string adminbuddy = "",
-              std::string bkupadminbuddy = "", bool useBosh = false,
-              std::string boshUrl = "", std::string boshHost = "",
-              bool tlsVerify = true, std::string saslMech = "",
-              bool tlsEnabled = true);
+  int connect(const XmppAccount &account, std::string adminbuddy = "",
+              std::string bkupadminbuddy = "");
+  // Authenticates with a throwaway client and disconnects again. Used by the
+  // fallback logic to probe the primary account while a fallback session is
+  // active. Independent gloox Client, safe to run on another thread.
+  static bool probe_account(const XmppAccount &account, bool debugLog,
+                            int timeout_s = ADXMPP_PROBE_TIMEOUT_S);
   // Ask the session to end from any thread; waits (bounded) until it did.
   int disconnect();
   std::string extractServerFromJID(const std::string &jid);
@@ -119,7 +138,7 @@ public:
     int port;
     std::string path;
   };
-  BoshUrlComponents parseBoshUrl(const std::string &url);
+  static BoshUrlComponents parseBoshUrl(const std::string &url);
 
   // outbound API, safe from any thread (queued)
   int send_reply(std::string reply, std::string sender = "");
@@ -220,6 +239,9 @@ private:
   flush_outbound(); // gloox-thread context (or under clientMutex in BOSH mode)
   void perform(const OutItem &item); // requires j != NULL, gloox-thread context
   void mirror_roster_from(const Roster &roster);
+  // creates and configures a gloox Client (TCP or BOSH stack) for account;
+  // shared by connect() and probe_account()
+  static Client *create_client(const XmppAccount &account, bool debugLog);
 
   std::atomic<bool> iConnect; // shows status of onConnect/onDisconnect
   std::atomic<bool> DisconnectNow;

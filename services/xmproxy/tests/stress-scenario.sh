@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --tcp-repeat) shift; REPEAT="$1";; --keep) KEEP=1;;
   *) echo "unknown option $1"; exit 2;; esac; shift; done
 RUN="$HERE/.run"; VENV="$HERE/.venv"
-source "$HERE/rig/accounts.env"; export XMPP_HOST XMPP_PORT XMPP_DOMAIN ADMIN_PW GUEST_PW
+source "$HERE/rig/accounts.env"; export XMPP_HOST XMPP_PORT XMPP_PORT2 XMPP_DOMAIN ADMIN_PW GUEST_PW
 export LD_LIBRARY_PATH="$INSTALL/lib:${LD_LIBRARY_PATH:-}"
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}:log_path=$RUN/asan"
 export TSAN_OPTIONS="${TSAN_OPTIONS:-}:log_path=$RUN/tsan"
