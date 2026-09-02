@@ -96,6 +96,10 @@ acl reload                          after editing the file by hand
 
 A denied command answers `return=ActionBlocked : result=requires <role>`. Contacts that are not in the roster are ignored entirely.
 
+## Machine-to-machine: JSON-RPC over XMPP
+
+Apps talk to the bot with JSON-RPC 2.0 in ordinary XMPP message bodies. A body starting with `{` is a request, for example `{"jsonrpc":"2.0","id":1,"method":"exec","params":{"cmd":"uptime"}}`; `describe` and `list_commands` tell an app what the device offers, and asynchronous commands finish with a `task.done` notification. The full specification is in [docs/protocol.md](docs/protocol.md). Chat commands keep working unchanged.
+
 ## BOSH Connection (For Corporate Networks)
 
 If your network blocks XMPP port 5222 but allows HTTPS (port 443), you can use BOSH (Bidirectional-streams Over Synchronous HTTP) to tunnel XMPP traffic over HTTPS.

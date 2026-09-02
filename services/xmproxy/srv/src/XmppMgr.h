@@ -113,10 +113,12 @@ struct XmppCmdEntry {
   std::string cmdMsg;
   std::string sender;
   bool aiPrompt; // forward to the AI agent instead of the command table
+  bool json;     // JSON-RPC 2.0 body (bucket 4)
 
 public:
-  XmppCmdEntry(std::string msg, std::string from, bool ai = false)
-      : cmdMsg(msg), sender(from), aiPrompt(ai) {}
+  XmppCmdEntry(std::string msg, std::string from, bool ai = false,
+               bool js = false)
+      : cmdMsg(msg), sender(from), aiPrompt(ai), json(js) {}
 };
 /* ------------------------------------------------------------------------- */
 #define EXMPP_EVNT_TYPES_TABL {"gsm", "gpio", "unknown", "none", "\0"}
@@ -128,15 +130,17 @@ typedef enum EXMPP_EVNT_TYPES_T {
 } EXMPP_EVNT_TYPES;
 /* ------------------------------------------------------------------------- */
 struct AyncEventEntry {
-  int taskID;     // async event taskID returned by server
-  int srvPort;    // port where async command was sent
-  int xmppTID;    // internal global task id of xmpp-proxy
-  std::string to; // reply back to this requestor
-  time_t created; // for the timeout sweep
+  int taskID;        // async event taskID returned by server
+  int srvPort;       // port where async command was sent
+  int xmppTID;       // internal global task id of xmpp-proxy
+  std::string to;    // reply back to this requestor
+  time_t created;    // for the timeout sweep
+  bool json;         // requester used JSON-RPC: completion goes as notification
+  std::string reqId; // its request id, echoed in the notification
 public:
   AyncEventEntry(int tid, int port, int xmtid, std::string sender)
       : taskID(tid), srvPort(port), xmppTID(xmtid), to(sender),
-        created(time(NULL)) {}
+        created(time(NULL)), json(false) {}
 };
 // following functor object is used as predicator for finding a specific vector
 // element entry based on srvToken
@@ -283,6 +287,52 @@ class XmppMgr : public ADXmppConsumer,
   std::string ActiveJid;
   XmAcl Acl;
   std::string AclFile;
+  std::string AppVersion; // reported by describe
+  // request context while the worker runs a command (worker thread only):
+  // async task entries created meanwhile are tagged with it
+  struct ReqCtx {
+    bool json;
+    std::string reqId;
+    ReqCtx() : json(false) {}
+  } CurrentReq;
+  std::deque<std::string> expand_command(std::string msg);
+  RPC_SRV_RESULT run_single_command(const std::string &cmd,
+                                    const std::string &sender,
+                                    XM_ROLE senderRole, std::string &returnval,
+                                    EXMPP_CMD_TYPES *typeOut);
+  std::string result_code_name(RPC_SRV_RESULT res);
+  // JSON-RPC 2.0 over XMPP (XmppJson.cpp)
+  void process_json_request(const XmppCmdEntry &entry);
+  std::string json_busy_response();
+  void send_task_notification(const std::string &to, int taskID,
+                              const std::string &result,
+                              const std::string &reqId);
+  // duplicate suppression (P3): recent (sender, id) -> response
+  struct RecentReply {
+    std::string sender;
+    std::string id;
+    std::string response;
+    time_t when;
+  };
+  std::deque<RecentReply> recentReplies;
+  std::mutex recentMutex;
+
+public:
+  struct json_object *json_describe(XM_ROLE role);
+  struct json_object *json_list_commands(XM_ROLE role);
+  struct json_object *json_exec(const std::string &cmd,
+                                const std::string &sender, XM_ROLE role,
+                                const std::string &reqId,
+                                struct json_object **error);
+  bool find_recent_reply(const std::string &sender, const std::string &id,
+                         std::string &response);
+  void remember_reply(const std::string &sender, const std::string &id,
+                      const std::string &response);
+  XM_ROLE required_role_public(EXMPP_CMD_TYPES cmd, const std::string &msg) {
+    return required_role(cmd, msg);
+  }
+
+private:
   // role of an authorized sender: admin buddies are always admin, roster
   // members get their ACL entry or the default role
   XM_ROLE role_of_sender(const std::string &sender);
@@ -449,14 +499,19 @@ public:
   void SetAiAgentUrl(std::string url);
   void SetAiModel(std::string model);
   int AttachHeartBeat(ADTimer *pTimer);
-  RPC_SRV_RESULT RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID,
-                                     std::string to); // called by eventHandler
+  RPC_SRV_RESULT
+  RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID, std::string to,
+                      bool json = false,
+                      std::string reqId = ""); // called by eventHandler
   RPC_SRV_RESULT RpcResponseCallback(std::string taskRes, int taskID,
-                                     std::string to);
+                                     std::string to, bool json = false,
+                                     std::string reqId = "");
   RPC_SRV_RESULT GpioEventCallback(int evntNum, int evntArg);
   // RPC_SRV_RESULT IsItMyAsyncTaskResp(int tid,int port);
   RPC_SRV_RESULT AccessAsyncTaskList(int tid, int port, bool insertEntryFlag,
-                                     int *xmpptID, std::string &sender);
+                                     int *xmpptID, std::string &sender,
+                                     bool *json = NULL,
+                                     std::string *reqId = NULL);
   void SetUSBGsmSts(bool sts);
   void SetOpenWrtCmdGroupSts(bool sts);
   void SetDockerCmdGroupSts(bool sts);
@@ -471,6 +526,7 @@ public:
     UpdateUrlFile = filepath;
   };
   void SetBotNameFilePath(std::string filepath);
+  void SetVersion(std::string v) { AppVersion = v; }
   RPC_SRV_RESULT xpandarg(std::string &cmdArg);
   RPC_SRV_RESULT xpandargs(std::string &cmdArg);
   inline void SetNetInterface(std::string interface) {

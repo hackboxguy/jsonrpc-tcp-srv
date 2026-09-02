@@ -12,6 +12,7 @@
 #   2. guest access baseline    (test_guest_access.py)
 #   3. TCP JSON-RPC regression  (tcp-json-rpc-client with utils/tests/xmproxy-test)
 #   3b. roles and ACL enforcement (test_acl.py)
+#   3c. JSON-RPC 2.0 over XMPP (test_jsonrpc.py)
 #   4. stress: two senders while the XMPP server restarts (test_stress.py)
 #   5. failover to the fallback account and back (test_failover.py)
 #   6. resilience: server restart, peer restart, SIGTERM (test_resilience.py)
@@ -114,6 +115,9 @@ if [ ${#EXTRA[@]} -eq 0 ]; then
 
     say "3b roles and ACL enforcement"
     RUN_DIR="$RUN" timeout 300 "$VENV/bin/python" "$HERE/test_acl.py" || FAILS=$((FAILS+1))
+
+    say "3c JSON-RPC 2.0 over XMPP"
+    timeout 300 "$VENV/bin/python" "$HERE/test_jsonrpc.py" || FAILS=$((FAILS+1))
 
     if [ "$QUICK" = 0 ]; then
         say "4/6 stress with server restarts"

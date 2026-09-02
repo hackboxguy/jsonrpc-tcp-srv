@@ -185,8 +185,23 @@ Acceptance
   the daemon.
 
 Decisions to verify at checkpoint
-- Method names and error codes in `protocol.md`.
-- Whether `exec` may run semicolon batches or only single commands.
+- Method names and error codes in `protocol.md`. (confirmed 2026-09-03)
+- `exec` runs a single command; a literal `;` is rejected and JSON batches
+  group requests. An alias that expands to several commands still runs them
+  all, because the alias is one named action, and the reply lists every
+  step. (confirmed 2026-09-03)
+- Command outcomes stay in the result with the same codes as chat, so
+  `UnknownCmd` or `Fail` are results, not JSON-RPC errors. Only protocol
+  problems (parse, invalid request, unknown method, bad params, not
+  authorized, busy) are errors.
+- Authorization is checked for every step of an alias batch before anything
+  runs; a denied batch executes nothing (stricter than chat, which runs the
+  allowed steps and denies the rest one by one).
+- P3 duplicate suppression: the stored reply is replayed for a repeated id
+  within 60 s and the command is not run again.
+
+Status: done 2026-09-03 on branch `m2m-extension`. `test_jsonrpc.py` covers
+31 checks; `tests/xmrpc.py` is a shell client for manual use.
 
 ## Bucket 5 — Manifest
 

@@ -50,6 +50,9 @@ The runner:
      `utils/tests/xmproxy-test/`),
    - roles and ACL (`test_acl.py`): viewer, operator and admin behavior of
      the guest account, `acl` command, persistence and reload,
+   - JSON-RPC over XMPP (`test_jsonrpc.py`): every method, batches,
+     notifications, malformed input, authorization, async completion,
+     duplicate suppression, interleaving with chat (see `docs/protocol.md`),
    - stress (`test_stress.py`): admin and guest each send 250 commands while
      Prosody is restarted twice; passes only with zero lost or extra replies,
    - failover (`test_failover.py`): primary stopped, bot answers as the
@@ -176,6 +179,18 @@ use TLS, so it hides the problem. For anything real, build gloox 1.0.28 with
 `./configure --with-openssl --without-gnutls` (exactly what the Dockerfile
 does), point `PKG_CONFIG_PATH` at its `lib/pkgconfig`, and put its `lib` on
 `LD_LIBRARY_PATH`. The Pi install in bucket 8 will script this.
+
+## Talking JSON-RPC from a shell
+
+`tests/xmrpc.py` sends one request and prints the reply (and any
+notification that follows within a second):
+
+```bash
+.venv/bin/python xmrpc.py --jid admin@localhost --pw adminpw-test --bot bot@localhost \
+    --host 127.0.0.1 --port 5222 --plaintext describe
+.venv/bin/python xmrpc.py ... exec '{"cmd": "uptime"}'
+.venv/bin/python xmrpc.py --jid me@example.org --pw ... --bot bot@example.org --host example.org exec '{"cmd":"account"}'
+```
 
 ## Manual check against a real server
 

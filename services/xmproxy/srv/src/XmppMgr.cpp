@@ -116,6 +116,10 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
         //{true ,EXMPP_CMD_CHANGE_ADMIN          , "changeadmin"
         //,"[buddyID]"},//only admin-buddy can run this command
 };
+extern const int
+    xmproxy_cmd_table_size; // const has internal linkage by default
+const int xmproxy_cmd_table_size =
+    sizeof(xmproxy_cmd_table) / sizeof(XMPROXY_CMD_TABLE);
 /* ------------------------------------------------------------------------- */
 XmppMgr::XmppMgr() //: AckToken(0)
     : OnFallback(false), PrimaryAvailable(false), ProbeStop(false),
@@ -229,7 +233,7 @@ void XmppMgr::sweep_async_tasks() {
     XMLOG_WRN("async task %d (port %d) timed out after %d s", expired[i].taskID,
               expired[i].srvPort, AsyncTimeoutSec);
     RpcResponseCallback(RPC_SRV_RESULT_TIMEOUT, expired[i].xmppTID,
-                        expired[i].to);
+                        expired[i].to, expired[i].json, expired[i].reqId);
   }
 }
 /* ------------------------------------------------------------------------- */
@@ -347,8 +351,28 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
                            ADXmppProducer *pObj)
 #endif
 {
-  // process the messages
-  // cout<<"msg arrived: "<<msg<<endl;
+  // JSON-RPC 2.0 mode: body starts with '{' or '[' (bucket 4)
+  size_t firstChar = msg.find_first_not_of(" \t\r\n");
+  if (firstChar != std::string::npos &&
+      (msg[firstChar] == '{' || msg[firstChar] == '[')) {
+    bool full = false;
+    {
+      std::lock_guard<std::mutex> lock(cmdMutex);
+      if (processCmd.size() >= XMPP_MAX_PENDING_CMDS)
+        full = true;
+      else
+        processCmd.push_back(XmppCmdEntry(msg, sender, false, true));
+    }
+    if (full) {
+      XMLOG_WRN("command queue full (%d pending), refusing JSON request "
+                "from %s",
+                XMPP_MAX_PENDING_CMDS, sender.c_str());
+      XmppProxy.send_reply(json_busy_response(), sender);
+      return 0;
+    }
+    XmppCmdProcessThread.wakeup_thread();
+    return 0;
+  }
   if (msg == "Echo" || msg == "echo") // for checking if client is alive
     XmppProxy.send_reply(msg, sender);
   else if (msg == "Help" || msg == "help") // print help
@@ -496,6 +520,211 @@ int XmppMgr::probe_loop() {
   return 0;
 }
 /* ------------------------------------------------------------------------- */
+// chat semantics kept exactly: lower-case the whole message, expand an alias
+// (two levels), split semicolon batches
+std::deque<std::string> XmppMgr::expand_command(std::string msg) {
+  transform(msg.begin(), msg.end(), msg.begin(), ::tolower);
+  Alias::iterator it = AliasList.find(msg);
+  if (it != AliasList.end())
+    msg = it->second;
+  std::deque<std::string> result;
+  stringstream ss(msg);
+  while (ss.good()) {
+    string substr;
+    getline(ss, substr, ';');
+    // nested alias(allow only two level of alias expansion)
+    Alias::iterator it2 = AliasList.find(substr);
+    if (it2 != AliasList.end()) {
+      stringstream sss(it2->second);
+      while (sss.good()) {
+        string subsubstr;
+        getline(sss, subsubstr, ';');
+        result.push_back(subsubstr);
+      }
+    } else
+      result.push_back(substr);
+  }
+  return result;
+}
+std::string XmppMgr::result_code_name(RPC_SRV_RESULT res) {
+  const char *resTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
+  if (res < 0 || res > RPC_SRV_RESULT_NONE)
+    return "Unknown";
+  return resTbl[res];
+}
+// One command, already alias-expanded, with the role check. Shared by the
+// chat dispatcher and the JSON exec method so both behave identically.
+RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
+                                           const std::string &sender,
+                                           XM_ROLE senderRole,
+                                           std::string &returnval,
+                                           EXMPP_CMD_TYPES *typeOut) {
+  RPC_SRV_RESULT res = RPC_SRV_RESULT_UNKNOWN_COMMAND;
+  EXMPP_CMD_TYPES cmdType = ResolveCmdStr(cmdcmdMsg);
+  if (typeOut)
+    *typeOut = cmdType;
+  XM_ROLE need = required_role(cmdType, cmdcmdMsg);
+  if (cmdType != EXMPP_CMD_UNKNOWN && senderRole < need) {
+    XMLOG_WRN("acl: %s (%s) denied '%s', needs %s", sender.c_str(),
+              xm_role_name(senderRole), cmdcmdMsg.c_str(), xm_role_name(need));
+    returnval = std::string("requires ") + xm_role_name(need);
+    return RPC_SRV_RESULT_ACTION_NOT_ALLOWED;
+  }
+  XmppCmdEntry cmd(cmdcmdMsg, sender); // handlers take the sender from here
+  switch (cmdType) {
+  case EXMPP_CMD_SMS_DELETE_ALL:
+    res = proc_cmd_sms_deleteall(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_SMS_DELETE:
+    res = proc_cmd_sms_delete(cmdcmdMsg);
+    break;
+  case EXMPP_CMD_SMS_GET:
+    res = proc_cmd_sms_get(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_SMS_SEND:
+    res = proc_cmd_sms_send(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_SMS_LIST_UPDATE:
+    res = proc_cmd_sms_list_update(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_SMS_GET_TOTAL:
+    res = proc_cmd_sms_get_total(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_GET_VERSION:
+    res = proc_cmd_fmw_get_version(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_UPDATE:
+    res = proc_cmd_fmw_update(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_FMW_UPDATE_STS:
+    res = proc_cmd_fmw_update_sts(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_UPDATE_RES:
+    res = proc_cmd_fmw_update_res(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_REBOOT:
+    res = proc_cmd_fmw_reboot(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_FMW_POWEROFF:
+    res = proc_cmd_fmw_poweroff(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_FMW_UPTIME:
+    res = proc_cmd_fmw_uptime(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_HOSTNAME:
+    res = proc_cmd_fmw_hostname(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_GET_MYIP:
+    res = proc_cmd_fmw_get_myip(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_RESET_HOSTNAME:
+    res = proc_cmd_fmw_set_default_hostname(cmdcmdMsg);
+    break;
+  case EXMPP_CMD_DIAL_VOICE:
+    res =
+        proc_cmd_dial_voice(cmdcmdMsg, returnval, (char *)"dial_voice", sender);
+    break; // inPrg
+  case EXMPP_CMD_DIAL_USSD:
+    res =
+        proc_cmd_dial_voice(cmdcmdMsg, returnval, (char *)"dial_ussd", sender);
+    break; // inPrg
+  case EXMPP_CMD_GET_USSD:
+    res = proc_cmd_get_ussd(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_DEBUG_LOG_STS:
+    res = proc_cmd_logsts(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_GSM_MODEM_IDENT:
+    res = proc_cmd_gsm_modem_identify(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_LOG_UPDATE:
+    res = proc_cmd_log_list_update(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_LOG_COUNT:
+    res = proc_cmd_log_get_count(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_LOG_MSG:
+    res = proc_cmd_log_get_line(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_FMW_GET_LOCALIP:
+    res = proc_cmd_fmw_get_localip(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_GPIO:
+    res = proc_cmd_gpio(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_GSM_EVENT_NOTIFY:
+    res = proc_cmd_event_gsm(cmdcmdMsg, sender, returnval);
+    break;
+  case EXMPP_CMD_GPIO_EVENT_NOTIFY:
+    res = proc_cmd_event_gpio(cmdcmdMsg, sender, returnval);
+    break;
+  // case EXMPP_CMD_ALIAS :res=proc_cmd_alias(cmdcmdMsg,returnval);break;
+  case EXMPP_CMD_SLEEP:
+    res = proc_cmd_sleep(cmdcmdMsg);
+    break;
+  case EXMPP_CMD_ACCOUNT:
+    res = proc_cmd_account_name(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_BOTNAME:
+    res = proc_cmd_bot_name(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_BUDDY_LIST:
+    res = proc_cmd_buddy_list(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_SHELLCMD:
+    res = proc_cmd_shellcmd(cmdcmdMsg, returnval, sender, EXMPP_CMD_SHELLCMD);
+    break; // inProgbreak;
+  case EXMPP_CMD_SHELLCMD_RESP:
+    res = proc_cmd_shellcmdresp(cmdcmdMsg, returnval, sender);
+    break; // inProgbreak;
+  case EXMPP_CMD_SHELLCMD_TRIG:
+    res = proc_cmd_shellcmd(cmdcmdMsg, returnval, sender,
+                            EXMPP_CMD_SHELLCMD_TRIG);
+    break; // inProgbreak;
+  case EXMPP_CMD_DEVIDENT:
+    res = proc_cmd_devident(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_SHUTDOWN:
+    res = proc_cmd_xmpshutdown(cmdcmdMsg, returnval, sender);
+    break; // inProg
+  case EXMPP_CMD_SONOFF:
+    res = proc_cmd_sonoff(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_DISPCLEAR:
+    res = proc_cmd_disp_clear(cmdcmdMsg);
+    break; //,returnval,sender);break;
+  case EXMPP_CMD_DISPPRINT:
+    res = proc_cmd_disp_print(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_DISPBKLT:
+    res = proc_cmd_disp_backlight(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_BUDDY_ADD:
+    res = proc_cmd_buddy_add(cmdcmdMsg, returnval, sender);
+    break;
+  case EXMPP_CMD_BUDDY_REMOVE:
+    res = proc_cmd_buddy_remove(cmdcmdMsg, returnval, sender);
+    break;
+  case EXMPP_CMD_BUDDY_SUBSCRIBE:
+    res = proc_cmd_buddy_subscribe(cmdcmdMsg, returnval, sender);
+    break;
+  case EXMPP_CMD_BUDDY_UNSUBSCRIBE:
+    res = proc_cmd_buddy_unsubscribe(cmdcmdMsg, returnval, sender);
+    break;
+  case EXMPP_CMD_ACCEPT_BUDDY_LIST:
+    res = proc_cmd_accept_buddy_list(cmdcmdMsg, returnval);
+    break;
+  case EXMPP_CMD_RELAY_MESSAGE:
+    res = proc_cmd_relay_message(cmdcmdMsg, returnval, sender);
+    break;
+  case EXMPP_CMD_ACL:
+    res = proc_cmd_acl(cmdcmdMsg, returnval);
+    break;
+  default:
+    break;
+  }
+  return res;
+}
 int XmppMgr::monoshot_callback_function(void *pUserData,
                                         ADThreadProducer *pObj) {
   while (true) {
@@ -512,12 +741,16 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       XmppProxy.send_reply(generate_ai_response(cmd.cmdMsg), cmd.sender);
       continue;
     }
+    if (cmd.json) {
+      process_json_request(cmd);
+      continue;
+    }
+    CurrentReq.json = false;
+    CurrentReq.reqId = "";
 
-    // std::string temp=cmd.cmdMsg;
     stringstream mystream(cmd.cmdMsg);
     std::string mycmd;
     mystream >> mycmd;
-    // transform(mycmd.begin(), mycmd.end(), mycmd.begin(), ::tolower);
     XM_ROLE senderRole = role_of_sender(cmd.sender);
     if (mycmd == "Alias" || mycmd == "alias") {
       std::string myreturnval = "";
@@ -532,217 +765,19 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
         myreturnval = std::string("requires ") + xm_role_name(need);
       } else
         myres = proc_cmd_alias(cmd.cmdMsg, myreturnval);
-      const char *myresTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
-      std::string myresult = myresTbl[myres];
       std::string myresponse =
-          "return=" + myresult + " : " + "result=" + myreturnval;
+          "return=" + result_code_name(myres) + " : " + "result=" + myreturnval;
       XmppProxy.send_reply(myresponse, cmd.sender);
       continue;
     }
-    // check if it is an alias
-    transform(cmd.cmdMsg.begin(), cmd.cmdMsg.end(), cmd.cmdMsg.begin(),
-              ::tolower); // convert all lower case
-    Alias::iterator it = AliasList.find(cmd.cmdMsg);
-    if (it != AliasList.end())
-      cmd.cmdMsg = it->second;
-    // cout<<"cmd="<<cmd.cmdMsg<<endl;
-
-    stringstream ss(cmd.cmdMsg);
-    std::deque<string> result;
-    while (ss.good()) {
-      string substr;
-      getline(ss, substr, ';');
-      // nested alias(allow only two level of alias expansion)
-      Alias::iterator it = AliasList.find(substr);
-      if (it != AliasList.end()) {
-        stringstream sss(it->second);
-        while (sss.good()) {
-          string subsubstr;
-          getline(sss, subsubstr, ';');
-          result.push_back(subsubstr);
-        }
-      } else
-        result.push_back(substr);
-    }
+    std::deque<std::string> result = expand_command(cmd.cmdMsg);
     while (!result.empty()) {
       std::string returnval = "";
-      RPC_SRV_RESULT res =
-          RPC_SRV_RESULT_UNKNOWN_COMMAND; // RPC_SRV_RESULT_FAIL;
-      std::string cmdcmdMsg = result.front();
-
-      // check if it is an alias
-      // transform(cmdcmdMsg.begin(), cmdcmdMsg.end(), cmdcmdMsg.begin(),
-      // ::tolower);//convert all lower case Alias::iterator it =
-      // AliasList.find(cmdcmdMsg); if (it != AliasList.end())
-      //	cmdcmdMsg=it->second;
-
-      EXMPP_CMD_TYPES cmdType = ResolveCmdStr(cmdcmdMsg);
-      XM_ROLE need = required_role(cmdType, cmdcmdMsg);
-      if (cmdType != EXMPP_CMD_UNKNOWN && senderRole < need) {
-        XMLOG_WRN("acl: %s (%s) denied '%s', needs %s", cmd.sender.c_str(),
-                  xm_role_name(senderRole), cmdcmdMsg.c_str(),
-                  xm_role_name(need));
-        cmdType = EXMPP_CMD_NONE; // fall through to the denial reply
-        res = RPC_SRV_RESULT_ACTION_NOT_ALLOWED;
-        returnval = std::string("requires ") + xm_role_name(need);
-      }
-      switch (cmdType) {
-      case EXMPP_CMD_SMS_DELETE_ALL:
-        res = proc_cmd_sms_deleteall(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_SMS_DELETE:
-        res = proc_cmd_sms_delete(cmdcmdMsg);
-        break;
-      case EXMPP_CMD_SMS_GET:
-        res = proc_cmd_sms_get(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_SMS_SEND:
-        res = proc_cmd_sms_send(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_SMS_LIST_UPDATE:
-        res = proc_cmd_sms_list_update(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_SMS_GET_TOTAL:
-        res = proc_cmd_sms_get_total(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_GET_VERSION:
-        res = proc_cmd_fmw_get_version(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_UPDATE:
-        res = proc_cmd_fmw_update(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_FMW_UPDATE_STS:
-        res = proc_cmd_fmw_update_sts(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_UPDATE_RES:
-        res = proc_cmd_fmw_update_res(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_REBOOT:
-        res = proc_cmd_fmw_reboot(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_FMW_POWEROFF:
-        res = proc_cmd_fmw_poweroff(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_FMW_UPTIME:
-        res = proc_cmd_fmw_uptime(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_HOSTNAME:
-        res = proc_cmd_fmw_hostname(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_GET_MYIP:
-        res = proc_cmd_fmw_get_myip(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_RESET_HOSTNAME:
-        res = proc_cmd_fmw_set_default_hostname(cmdcmdMsg);
-        break;
-      case EXMPP_CMD_DIAL_VOICE:
-        res = proc_cmd_dial_voice(cmdcmdMsg, returnval, (char *)"dial_voice",
-                                  cmd.sender);
-        break; // inPrg
-      case EXMPP_CMD_DIAL_USSD:
-        res = proc_cmd_dial_voice(cmdcmdMsg, returnval, (char *)"dial_ussd",
-                                  cmd.sender);
-        break; // inPrg
-      case EXMPP_CMD_GET_USSD:
-        res = proc_cmd_get_ussd(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_DEBUG_LOG_STS:
-        res = proc_cmd_logsts(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_GSM_MODEM_IDENT:
-        res = proc_cmd_gsm_modem_identify(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_LOG_UPDATE:
-        res = proc_cmd_log_list_update(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_LOG_COUNT:
-        res = proc_cmd_log_get_count(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_LOG_MSG:
-        res = proc_cmd_log_get_line(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_FMW_GET_LOCALIP:
-        res = proc_cmd_fmw_get_localip(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_GPIO:
-        res = proc_cmd_gpio(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_GSM_EVENT_NOTIFY:
-        res = proc_cmd_event_gsm(cmdcmdMsg, cmd.sender, returnval);
-        break;
-      case EXMPP_CMD_GPIO_EVENT_NOTIFY:
-        res = proc_cmd_event_gpio(cmdcmdMsg, cmd.sender, returnval);
-        break;
-      // case EXMPP_CMD_ALIAS :res=proc_cmd_alias(cmdcmdMsg,returnval);break;
-      case EXMPP_CMD_SLEEP:
-        res = proc_cmd_sleep(cmdcmdMsg);
-        break;
-      case EXMPP_CMD_ACCOUNT:
-        res = proc_cmd_account_name(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_BOTNAME:
-        res = proc_cmd_bot_name(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_BUDDY_LIST:
-        res = proc_cmd_buddy_list(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_SHELLCMD:
-        res = proc_cmd_shellcmd(cmdcmdMsg, returnval, cmd.sender,
-                                EXMPP_CMD_SHELLCMD);
-        break; // inProgbreak;
-      case EXMPP_CMD_SHELLCMD_RESP:
-        res = proc_cmd_shellcmdresp(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProgbreak;
-      case EXMPP_CMD_SHELLCMD_TRIG:
-        res = proc_cmd_shellcmd(cmdcmdMsg, returnval, cmd.sender,
-                                EXMPP_CMD_SHELLCMD_TRIG);
-        break; // inProgbreak;
-      case EXMPP_CMD_DEVIDENT:
-        res = proc_cmd_devident(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_SHUTDOWN:
-        res = proc_cmd_xmpshutdown(cmdcmdMsg, returnval, cmd.sender);
-        break; // inProg
-      case EXMPP_CMD_SONOFF:
-        res = proc_cmd_sonoff(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_DISPCLEAR:
-        res = proc_cmd_disp_clear(cmdcmdMsg);
-        break; //,returnval,cmd.sender);break;
-      case EXMPP_CMD_DISPPRINT:
-        res = proc_cmd_disp_print(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_DISPBKLT:
-        res = proc_cmd_disp_backlight(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_BUDDY_ADD:
-        res = proc_cmd_buddy_add(cmdcmdMsg, returnval, cmd.sender);
-        break;
-      case EXMPP_CMD_BUDDY_REMOVE:
-        res = proc_cmd_buddy_remove(cmdcmdMsg, returnval, cmd.sender);
-        break;
-      case EXMPP_CMD_BUDDY_SUBSCRIBE:
-        res = proc_cmd_buddy_subscribe(cmdcmdMsg, returnval, cmd.sender);
-        break;
-      case EXMPP_CMD_BUDDY_UNSUBSCRIBE:
-        res = proc_cmd_buddy_unsubscribe(cmdcmdMsg, returnval, cmd.sender);
-        break;
-      case EXMPP_CMD_ACCEPT_BUDDY_LIST:
-        res = proc_cmd_accept_buddy_list(cmdcmdMsg, returnval);
-        break;
-      case EXMPP_CMD_RELAY_MESSAGE:
-        res = proc_cmd_relay_message(cmdcmdMsg, returnval, cmd.sender);
-        break;
-      case EXMPP_CMD_ACL:
-        res = proc_cmd_acl(cmdcmdMsg, returnval);
-        break;
-      default:
-        break;
-      }
+      RPC_SRV_RESULT res = run_single_command(result.front(), cmd.sender,
+                                              senderRole, returnval, NULL);
       result.pop_front();
-      const char *resTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
-      std::string result = resTbl[res];
-      std::string response = "return=" + result + " : " + "result=" + returnval;
+      std::string response =
+          "return=" + result_code_name(res) + " : " + "result=" + returnval;
       XmppProxy.send_reply(response, cmd.sender); // result+":"+returnval);
     }
   }
@@ -752,39 +787,39 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
 // after receiving the result of inProg task, this call back is called to send
 // reply over xmpp
 RPC_SRV_RESULT XmppMgr::RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID,
-                                            std::string to) {
-  char tID[255];
-  sprintf(tID, "%d", taskID);
-  std::string returnval = "taskID=";
-  returnval += tID;
-
-  const char *resTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
-  std::string result = resTbl[taskRes];
-  std::string response = "return=" + result + " : " + "result=" + returnval;
-  XmppProxy.send_reply(response, to); // result+":"+returnval);
-  return RPC_SRV_RESULT_SUCCESS;
+                                            std::string to, bool json,
+                                            std::string reqId) {
+  return RpcResponseCallback(result_code_name(taskRes), taskID, to, json,
+                             reqId);
 }
 RPC_SRV_RESULT XmppMgr::RpcResponseCallback(std::string taskRes, int taskID,
-                                            std::string to) {
+                                            std::string to, bool json,
+                                            std::string reqId) {
+  if (json) {
+    send_task_notification(to, taskID, taskRes, reqId);
+    return RPC_SRV_RESULT_SUCCESS;
+  }
   char tID[255];
-  sprintf(tID, "%d", taskID);
+  snprintf(tID, sizeof(tID), "%d", taskID);
   std::string returnval = "taskID=";
   returnval += tID;
-  std::string result = taskRes;
-  std::string response = "return=" + result + " : " + "result=" + returnval;
+  std::string response = "return=" + taskRes + " : " + "result=" + returnval;
   XmppProxy.send_reply(response, to);
   return RPC_SRV_RESULT_SUCCESS;
 }
 // RAII function, used for inserting entry or searching for existing entry
 RPC_SRV_RESULT XmppMgr::AccessAsyncTaskList(int tid, int port,
                                             bool insertEntryFlag, int *xmpptID,
-                                            std::string &sender) {
+                                            std::string &sender, bool *json,
+                                            std::string *reqId) {
   // AsyncTaskList is shared with the event thread and the timeout sweep
   std::lock_guard<std::mutex> lock(asyncMutex);
   if (insertEntryFlag == true) {
     XmppTaskIDCounter++; // global task id counter for external xmpp clients
-    AsyncTaskList.push_back(
-        AyncEventEntry(tid, port, XmppTaskIDCounter, sender));
+    AyncEventEntry entry(tid, port, XmppTaskIDCounter, sender);
+    entry.json = CurrentReq.json; // tagged with the request being served
+    entry.reqId = CurrentReq.reqId;
+    AsyncTaskList.push_back(entry);
     if (xmpptID != NULL)
       *xmpptID = XmppTaskIDCounter;
   } else {
@@ -797,6 +832,10 @@ RPC_SRV_RESULT XmppMgr::AccessAsyncTaskList(int tid, int port,
     if (xmpptID != NULL)
       *xmpptID = (*it).xmppTID;
     sender = (*it).to;
+    if (json != NULL)
+      *json = (*it).json;
+    if (reqId != NULL)
+      *reqId = (*it).reqId;
     // if (find_if(AsyncTaskList.begin(), AsyncTaskList.end(),
     // FindAsyncEventEntry(tid,port)) == AsyncTaskList.end()) 	return
     // RPC_SRV_RESULT_FAIL; erase the entry

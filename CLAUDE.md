@@ -191,6 +191,15 @@ onXmppMessage() → ResolveCmdStr() → proc_cmd_*() → send_reply()
 - gloox must be built with OpenSSL for real servers; GnuTLS builds fail SASL
   against Snikket. See `services/xmproxy/docs/dev-setup.md`.
 
+### JSON-RPC 2.0 over XMPP (since bucket 4)
+
+A message body starting with `{` or `[` is served by `XmppJson.cpp` instead
+of the chat parser: methods `ping`, `describe`, `list_commands`, `exec`
+(one chat command string, same alias expansion and role checks as chat),
+`task.done` notifications for asynchronous commands, JSON batches, and
+duplicate suppression per sender and request id. Specification:
+`services/xmproxy/docs/protocol.md`. Chat mode is untouched.
+
 ## Data Flow
 
 ### Incoming XMPP Message Flow

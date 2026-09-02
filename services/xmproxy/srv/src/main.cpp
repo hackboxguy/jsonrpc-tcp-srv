@@ -71,6 +71,7 @@ int main(int argc, const char *argv[]) {
                                                 // list file
   XmpManager.SetNetInterface(CmdLine.get_net_interface());
   XmpManager.SetAclFilePath(CmdLine.get_acl_filepath()); // buddy roles
+  XmpManager.SetVersion(ver);                            // for describe
   XmpManager.SetUpdateurlFilePath(
       CmdLine.get_updateurl_filepath());                // updateurl filepath
   XmpManager.SetAiAgentUrl(CmdLine.get_ai_agent_url()); // ai-agent-url
