@@ -251,6 +251,7 @@ xmproxysrv [OPTIONS]
   --aiurl=<url>              # AI agent URL
   --aimodel=<model>          # AI model name
   --loglevel=<level>         # error|warn|info|debug (default info)
+  --aclfile=<path>           # buddy roles file (admin, operator, viewer)
 ```
 
 Optional login-file keys: `server`, `port`, `pinginterval`, `pingmisses`,
@@ -302,21 +303,26 @@ docker-compose up -d
 
 ## Security Architecture
 
-### Authorization Model
+### Authorization Model (roles, since bucket 3)
 
-1. **Admin Buddy**: Full access to all commands
-2. **Backup Admin Buddy**: Secondary admin account
-3. **Roster Members**: Limited access based on command ACL
-4. **Unknown Users**: Messages ignored
+1. **Admin buddy and backup admin buddy** (login file): always role `admin`.
+2. **Roster members**: role from the ACL file (`--aclfile`, one `jid role`
+   per line) or the default role `viewer` when not listed.
+3. **Unknown JIDs**: ignored, never answered.
 
-### Access Control List (ACL)
+Roles: `admin` > `operator` > `viewer`. Every command in `xmproxy_cmd_table`
+carries a minimum level (`EXMPP_USER_ACCESS_ADMIN` = admin,
+`EXMPP_USER_ACCESS_READWRITE` = operator, `EXMPP_USER_ACCESS_READONLY` =
+viewer); `XmppMgr::required_role()` adds argument-dependent cases (reading
+hostname, botname, the alias list or a gpio is viewer, changing them is
+admin or operator). The dispatcher checks every command, also inside a
+semicolon batch, and answers `return=ActionBlocked : result=requires <role>`
+on denial, logging it. `help` lists only what the sender may run. Admins
+manage roles over chat with `acl`, `acl <jid> <role>`, `acl <jid> remove`,
+`acl reload`.
 
-Commands have access levels defined in `XMPROXY_CMD_TABLE`:
-- `EXMPP_USER_ACCESS_ADMIN` - Admin-only commands (reboot, poweroff, shellcmd)
-- `EXMPP_USER_ACCESS_READWRITE` - Read/write for authorized buddies
-- `EXMPP_USER_ACCESS_READONLY` - Read-only commands (uptime, version)
-
-**Implementation:** [services/xmproxy/srv/src/XmppMgr.h:180-186](services/xmproxy/srv/src/XmppMgr.h#L180-L186)
+**Implementation:** `services/xmproxy/srv/src/Acl.h`, `Acl.cpp`, and
+`required_role()` / `proc_cmd_acl()` in `XmppMgr.cpp`.
 
 ### Buddy Authorization
 

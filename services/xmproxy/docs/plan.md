@@ -145,8 +145,28 @@ Acceptance
 - Golden regression unchanged for the admin account.
 
 Decisions to verify at checkpoint
-- D11: default role for unlisted roster members.
-- The exact role assigned to each existing command.
+- D11: default role for unlisted roster members is viewer. (confirmed 2026-09-02)
+- The role assigned to each command, as implemented:
+  - viewer: echo, help, version, uptime, hostname (read), publicip, localip,
+    account, botname (read), buddylist, acceptbuddylist, alias (list),
+    gpio (read), eventgpio, eventgsm, log commands
+  - operator: gpio (set), sleep, identify, sonoff, dispclear, display,
+    dispbklt, and the legacy GSM and SMS commands
+  - admin: shellcmd, shellcmdtrig, shellcmdresp, reboot, poweroff, sysupdate,
+    hostname (set), resethostname, botname (set), alias (edit), xmpshutdown,
+    acceptbuddy, rejectbuddy, subscribe, unsubscribe, relaymsg, acl
+- Unknown JIDs (not admin, not in the roster) stay silent on purpose; a bot
+  that answers strangers advertises itself. Denials with an explicit
+  `ActionBlocked : requires <role>` reply go to roster members only (F3
+  resolved this way; the JSON path in bucket 4 behaves the same).
+- `help` lists only the commands the sender may run.
+- Without `--aclfile` the roles still work (admin buddies plus default role)
+  and `acl` changes are kept in memory with a warning.
+
+Status: done 2026-09-03 on branch `m2m-extension`. `test_acl.py` covers 30
+checks: viewer reads, viewer denials, per-command checks inside a semicolon
+batch, role changes taking effect immediately, persistence, external edit
+plus reload, argument errors, admin buddy immune to demotion, denial logged.
 
 ## Bucket 4 — JSON-RPC 2.0 over XMPP
 

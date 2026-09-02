@@ -35,6 +35,10 @@ cp /run/secrets/xmpp-login /tmp/xmpp-login.txt
 if [ ! -f /xmpp-data/xmpp-alias-list.txt ]; then
 	cp /usr/local/etc/xmproxy/xmpp-alias-list.txt /xmpp-data/
 fi
+# buddy roles (admin, operator, viewer), persisted in the data volume
+if [ ! -f /xmpp-data/xmpp-acl.txt ]; then
+	touch /xmpp-data/xmpp-acl.txt
+fi
 
 # Check if XMPP_AI_URL(ollama) environment variable is set
 if [ -z "$XMPP_AI_URL" ]; then
@@ -50,4 +54,4 @@ else
         AI_MODEL_ARG="--aimodel=$XMPP_AI_MODEL"
 fi
 # Start the xmpp-chatbot-server binary
-exec /usr/local/bin/xmproxysrv --loginfile=/tmp/xmpp-login.txt --aliaslist=/xmpp-data/xmpp-alias-list.txt "$AI_URL_ARG" "$AI_MODEL_ARG"
+exec /usr/local/bin/xmproxysrv --loginfile=/tmp/xmpp-login.txt --aliaslist=/xmpp-data/xmpp-alias-list.txt --aclfile=/xmpp-data/xmpp-acl.txt "$AI_URL_ARG" "$AI_MODEL_ARG"

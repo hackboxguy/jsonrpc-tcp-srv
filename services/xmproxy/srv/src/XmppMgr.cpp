@@ -35,58 +35,56 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
          EXMPP_USER_ACCESS_READWRITE},
         {true, EXMPP_CMD_GET_USSD, "readussd", "", EXMPP_USER_ACCESS_READWRITE},
         {true, EXMPP_CMD_FMW_GET_VERSION, "version", "",
-         EXMPP_USER_ACCESS_READWRITE},
-        {true, EXMPP_CMD_FMW_UPDATE, "sysupdate", "",
-         EXMPP_USER_ACCESS_READWRITE},
-        {true, EXMPP_CMD_FMW_REBOOT, "reboot", "", EXMPP_USER_ACCESS_READWRITE},
-        {true, EXMPP_CMD_FMW_POWEROFF, "poweroff", "",
-         EXMPP_USER_ACCESS_READWRITE},
-        {true, EXMPP_CMD_FMW_UPTIME, "uptime", "", EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
+        {true, EXMPP_CMD_FMW_UPDATE, "sysupdate", "", EXMPP_USER_ACCESS_ADMIN},
+        {true, EXMPP_CMD_FMW_REBOOT, "reboot", "", EXMPP_USER_ACCESS_ADMIN},
+        {true, EXMPP_CMD_FMW_POWEROFF, "poweroff", "", EXMPP_USER_ACCESS_ADMIN},
+        {true, EXMPP_CMD_FMW_UPTIME, "uptime", "", EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_FMW_HOSTNAME, "hostname", "[name]",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_FMW_RESET_HOSTNAME, "resethostname", "",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_ADMIN},
         {true, EXMPP_CMD_FMW_GET_MYIP, "publicip", "",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_FMW_GET_LOCALIP, "localip", "",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
         {false, EXMPP_CMD_DEBUG_LOG_STS, "logsts", "",
-         EXMPP_USER_ACCESS_READWRITE}, // due to bug, disabled(to be fixed
-                                       // later)
+         EXMPP_USER_ACCESS_READONLY}, // due to bug, disabled(to be fixed
+                                      // later)
         {false, EXMPP_CMD_LOG_UPDATE, "logupdate", "",
-         EXMPP_USER_ACCESS_READWRITE}, // due to bug, disabled(to be fixed
-                                       // later)
+         EXMPP_USER_ACCESS_READONLY}, // due to bug, disabled(to be fixed
+                                      // later)
         {false, EXMPP_CMD_LOG_COUNT, "logcount", "",
-         EXMPP_USER_ACCESS_READWRITE}, // due to bug, disabled(to be fixed
-                                       // later)
+         EXMPP_USER_ACCESS_READONLY}, // due to bug, disabled(to be fixed
+                                      // later)
         {false, EXMPP_CMD_LOG_MSG, "logmsg", "<zero_index_lineNum>",
-         EXMPP_USER_ACCESS_READWRITE}, // due to bug, disabled(to be fixed
-                                       // later)
+         EXMPP_USER_ACCESS_READONLY}, // due to bug, disabled(to be fixed
+                                      // later)
         {true, EXMPP_CMD_GPIO, "gpio", "<gpio_num> [sts(0/1)]",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_GSM_EVENT_NOTIFY, "eventgsm", "<sts[0/1]>",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_GPIO_EVENT_NOTIFY, "eventgpio",
-         "<gpio_num> [sts(0/1)]", EXMPP_USER_ACCESS_READWRITE},
+         "<gpio_num> [sts(0/1)]", EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_ALIAS, "alias", "name=cmd",
-         EXMPP_USER_ACCESS_READWRITE},
+         EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_SLEEP, "sleep", "<seconds>",
          EXMPP_USER_ACCESS_READWRITE}, // adding delay between multiple commands
         {true, EXMPP_CMD_ACCOUNT, "account", "",
-         EXMPP_USER_ACCESS_READWRITE}, // xmpp logid ID used for logging into
-                                       // server
+         EXMPP_USER_ACCESS_READONLY}, // xmpp logid ID used for logging into
+                                      // server
         {true, EXMPP_CMD_BOTNAME, "botname", "[name]",
-         EXMPP_USER_ACCESS_READWRITE}, // xmpp chat-bot name for identification
+         EXMPP_USER_ACCESS_READONLY}, // xmpp chat-bot name for identification
         {true, EXMPP_CMD_BUDDY_LIST, "buddylist", "",
-         EXMPP_USER_ACCESS_READWRITE}, // prints buddy list
+         EXMPP_USER_ACCESS_READONLY}, // prints buddy list
         {true, EXMPP_CMD_SHELLCMD, "shellcmd", "<command>",
-         EXMPP_USER_ACCESS_READWRITE}, // executes remote shell command
+         EXMPP_USER_ACCESS_ADMIN}, // executes remote shell command
         {true, EXMPP_CMD_SHELLCMD_RESP, "shellcmdresp", "",
-         EXMPP_USER_ACCESS_READWRITE}, // reads response of last executed shell
-                                       // command
+         EXMPP_USER_ACCESS_ADMIN}, // reads response of last executed shell
+                                   // command
         {true, EXMPP_CMD_SHELLCMD_TRIG, "shellcmdtrig", "<command>",
-         EXMPP_USER_ACCESS_READWRITE}, // executes remote shell command but
-                                       // without redirecting the output
+         EXMPP_USER_ACCESS_ADMIN}, // executes remote shell command but
+                                   // without redirecting the output
         {true, EXMPP_CMD_DEVIDENT, "identify", "",
          EXMPP_USER_ACCESS_READWRITE}, // identify board by blinking onboard LED
         {true, EXMPP_CMD_SHUTDOWN, "xmpshutdown", "",
@@ -109,9 +107,12 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
         {true, EXMPP_CMD_BUDDY_UNSUBSCRIBE, "unsubscribe", "[buddyID]",
          EXMPP_USER_ACCESS_ADMIN}, // only admin-buddy can run this command
         {true, EXMPP_CMD_ACCEPT_BUDDY_LIST, "acceptbuddylist", "",
-         EXMPP_USER_ACCESS_READWRITE}, // prints buddy list
+         EXMPP_USER_ACCESS_READONLY}, // prints buddy list
         {true, EXMPP_CMD_RELAY_MESSAGE, "relaymsg", "<buddyID> <message>",
-         EXMPP_USER_ACCESS_ADMIN} // relays a message to given recipient
+         EXMPP_USER_ACCESS_ADMIN}, // relays a message to given recipient
+        {true, EXMPP_CMD_ACL, "acl",
+         "[<jid> <admin|operator|viewer|remove>] | [reload]",
+         EXMPP_USER_ACCESS_ADMIN} // buddy roles
         //{true ,EXMPP_CMD_CHANGE_ADMIN          , "changeadmin"
         //,"[buddyID]"},//only admin-buddy can run this command
 };
@@ -316,7 +317,7 @@ void XmppMgr::SetDockerCmdGroupSts(bool sts) {
   }
 }
 /* ------------------------------------------------------------------------- */
-std::string XmppMgr::print_help() {
+std::string XmppMgr::print_help(XM_ROLE role) {
   std::string help = "", cmd, cmdhlp;
   /*const char *cmdTbl[]     = EXMPP_CMD_TABL;
   const char *cmdTblHelp[] = EXMPP_CMD_TABL_HELP;
@@ -329,6 +330,8 @@ std::string XmppMgr::print_help() {
   for (int i = 0; i < total_cmds; i++) {
     if (xmproxy_cmd_table[i].cmdsts != true)
       continue; // dont show disabled commands
+    if (required_role(xmproxy_cmd_table[i].cmd, "") > role)
+      continue; // dont show commands the sender cannot run
     cmd = xmproxy_cmd_table[i].cmd_name;
     cmdhlp = xmproxy_cmd_table[i].cmd_arg;
     help += cmd + " " + cmdhlp + "\n";
@@ -349,7 +352,7 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
   if (msg == "Echo" || msg == "echo") // for checking if client is alive
     XmppProxy.send_reply(msg, sender);
   else if (msg == "Help" || msg == "help") // print help
-    XmppProxy.send_reply(print_help(), sender);
+    XmppProxy.send_reply(print_help(role_of_sender(sender)), sender);
   else if (msg.find("return=") != std::string::npos) {
     // this is the respose from another bot for a request from this bot
     std::lock_guard<std::mutex> lock(inboxMutex);
@@ -515,11 +518,20 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
     std::string mycmd;
     mystream >> mycmd;
     // transform(mycmd.begin(), mycmd.end(), mycmd.begin(), ::tolower);
+    XM_ROLE senderRole = role_of_sender(cmd.sender);
     if (mycmd == "Alias" || mycmd == "alias") {
       std::string myreturnval = "";
       RPC_SRV_RESULT myres =
           RPC_SRV_RESULT_UNKNOWN_COMMAND; // RPC_SRV_RESULT_FAIL;
-      myres = proc_cmd_alias(cmd.cmdMsg, myreturnval);
+      XM_ROLE need = required_role(EXMPP_CMD_ALIAS, cmd.cmdMsg);
+      if (senderRole < need) {
+        XMLOG_WRN("acl: %s (%s) denied '%s', needs %s", cmd.sender.c_str(),
+                  xm_role_name(senderRole), cmd.cmdMsg.c_str(),
+                  xm_role_name(need));
+        myres = RPC_SRV_RESULT_ACTION_NOT_ALLOWED;
+        myreturnval = std::string("requires ") + xm_role_name(need);
+      } else
+        myres = proc_cmd_alias(cmd.cmdMsg, myreturnval);
       const char *myresTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
       std::string myresult = myresTbl[myres];
       std::string myresponse =
@@ -564,7 +576,17 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       // AliasList.find(cmdcmdMsg); if (it != AliasList.end())
       //	cmdcmdMsg=it->second;
 
-      switch (ResolveCmdStr(cmdcmdMsg)) {
+      EXMPP_CMD_TYPES cmdType = ResolveCmdStr(cmdcmdMsg);
+      XM_ROLE need = required_role(cmdType, cmdcmdMsg);
+      if (cmdType != EXMPP_CMD_UNKNOWN && senderRole < need) {
+        XMLOG_WRN("acl: %s (%s) denied '%s', needs %s", cmd.sender.c_str(),
+                  xm_role_name(senderRole), cmdcmdMsg.c_str(),
+                  xm_role_name(need));
+        cmdType = EXMPP_CMD_NONE; // fall through to the denial reply
+        res = RPC_SRV_RESULT_ACTION_NOT_ALLOWED;
+        returnval = std::string("requires ") + xm_role_name(need);
+      }
+      switch (cmdType) {
       case EXMPP_CMD_SMS_DELETE_ALL:
         res = proc_cmd_sms_deleteall(cmdcmdMsg, returnval, cmd.sender);
         break; // inProg
@@ -711,6 +733,9 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       case EXMPP_CMD_RELAY_MESSAGE:
         res = proc_cmd_relay_message(cmdcmdMsg, returnval, cmd.sender);
         break;
+      case EXMPP_CMD_ACL:
+        res = proc_cmd_acl(cmdcmdMsg, returnval);
+        break;
       default:
         break;
       }
@@ -814,12 +839,101 @@ EXMPP_CMD_TYPES XmppMgr::ResolveCmdStr(std::string msg) {
   return EXMPP_CMD_UNKNOWN;
 }
 /* ------------------------------------------------------------------------- */
+XM_ROLE XmppMgr::role_of_sender(const std::string &sender) {
+  if (XmppProxy.is_admin_user(sender))
+    return XM_ROLE_ADMIN;
+  return Acl.role_of(sender);
+}
+static int count_args(const std::string &msg) {
+  stringstream ss(msg);
+  std::string tok;
+  int n = -1; // first token is the command itself
+  while (ss >> tok)
+    n++;
+  return n < 0 ? 0 : n;
+}
+XM_ROLE XmppMgr::required_role(EXMPP_CMD_TYPES cmd, const std::string &msg) {
+  // argument dependent commands: reading is viewer, changing is not
+  switch (cmd) {
+  case EXMPP_CMD_FMW_HOSTNAME: // hostname [name]
+  case EXMPP_CMD_BOTNAME:      // botname [name]
+    return count_args(msg) > 0 ? XM_ROLE_ADMIN : XM_ROLE_VIEWER;
+  case EXMPP_CMD_ALIAS: // alias | alias name=cmd
+    return count_args(msg) > 0 ? XM_ROLE_ADMIN : XM_ROLE_VIEWER;
+  case EXMPP_CMD_GPIO: // gpio <num> [sts]
+    return count_args(msg) > 1 ? XM_ROLE_OPERATOR : XM_ROLE_VIEWER;
+  default:
+    break;
+  }
+  int total_cmds = sizeof(xmproxy_cmd_table) / sizeof(XMPROXY_CMD_TABLE);
+  for (int i = 0; i < total_cmds; i++) {
+    if (xmproxy_cmd_table[i].cmd != cmd)
+      continue;
+    switch (xmproxy_cmd_table[i].cmdaccess) {
+    case EXMPP_USER_ACCESS_READONLY:
+      return XM_ROLE_VIEWER;
+    case EXMPP_USER_ACCESS_READWRITE:
+      return XM_ROLE_OPERATOR;
+    default:
+      return XM_ROLE_ADMIN;
+    }
+  }
+  return XM_ROLE_ADMIN; // unknown commands are not run anyway
+}
+// acl                      list entries and the default role
+// acl <jid> <role>         set (admin, operator, viewer), persisted
+// acl <jid> remove         drop the entry, default role applies again
+// acl reload               re-read the file
+RPC_SRV_RESULT XmppMgr::proc_cmd_acl(std::string msg, std::string &returnval) {
+  stringstream ss(msg);
+  std::string cmd, jid, rolename;
+  ss >> cmd >> jid >> rolename;
+  if (jid.empty()) {
+    returnval =
+        "\ndefault " + std::string(xm_role_name(Acl.get_default_role())) + "\n";
+    std::vector<std::pair<std::string, XM_ROLE>> list = Acl.entries();
+    for (size_t i = 0; i < list.size(); i++)
+      returnval += list[i].first + " " + xm_role_name(list[i].second) + "\n";
+    if (!Acl.get_file().empty())
+      returnval += "file " + Acl.get_file() + "\n";
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  if (jid == "reload") {
+    if (Acl.get_file().empty())
+      return RPC_SRV_RESULT_FILE_NOT_FOUND;
+    return Acl.load() >= 0 ? RPC_SRV_RESULT_SUCCESS
+                           : RPC_SRV_RESULT_FILE_OPEN_ERR;
+  }
+  if (jid.find('@') == std::string::npos)
+    return RPC_SRV_RESULT_ARG_ERROR;
+  if (rolename == "remove") {
+    if (!Acl.has_entry(jid))
+      return RPC_SRV_RESULT_ITEM_NOT_FOUND;
+    return Acl.remove(jid) ? RPC_SRV_RESULT_SUCCESS
+                           : RPC_SRV_RESULT_FILE_WRITE_ERR;
+  }
+  XM_ROLE role = xm_role_from_name(rolename);
+  if (role == XM_ROLE_NONE)
+    return RPC_SRV_RESULT_ARG_ERROR;
+  if (Acl.get_file().empty())
+    XMLOG_WRN("acl: no --aclfile configured, change for %s is not persisted",
+              jid.c_str());
+  return Acl.set(jid, role) ? RPC_SRV_RESULT_SUCCESS
+                            : RPC_SRV_RESULT_FILE_WRITE_ERR;
+}
+/* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   if (accountFilePath.size() <= 0)
     return RPC_SRV_RESULT_FAIL;
 
   // fill AliasList with contents of alias-file
   LoadAliasList(AliasListFile);
+  Acl.set_file(AclFile);
+  if (!AclFile.empty())
+    Acl.load();
+  else
+    XMLOG_INF("acl: no --aclfile, roster members get the default role %s",
+              xm_role_name(Acl.get_default_role()));
   LoadEventSubscrList(EventSubscrListFile, &myEventList);
 
   // cout<<"loginfilepath: "<<accountFilePath<<endl;

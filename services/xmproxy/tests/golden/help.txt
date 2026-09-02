@@ -24,3 +24,4 @@ subscribe [buddyID]
 unsubscribe [buddyID]
 acceptbuddylist 
 relaymsg <buddyID> <message>
+acl [<jid> <admin|operator|viewer|remove>] | [reload]

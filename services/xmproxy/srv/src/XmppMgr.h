@@ -6,6 +6,7 @@
 #else
 #include "ADXmppProxy.hpp"
 #endif
+#include "Acl.h"
 #include "XmLog.h"
 #include <atomic>
 #include <deque>
@@ -103,6 +104,7 @@ typedef enum EXMPP_CMD_TYPES_T {
   EXMPP_CMD_BUDDY_UNSUBSCRIBE,
   EXMPP_CMD_ACCEPT_BUDDY_LIST,
   EXMPP_CMD_RELAY_MESSAGE,
+  EXMPP_CMD_ACL, // list/set/remove/reload buddy roles (admin)
   EXMPP_CMD_UNKNOWN,
   EXMPP_CMD_NONE
 } EXMPP_CMD_TYPES;
@@ -279,6 +281,15 @@ class XmppMgr : public ADXmppConsumer,
   int probeThreadID;
   std::mutex activeMutex;
   std::string ActiveJid;
+  XmAcl Acl;
+  std::string AclFile;
+  // role of an authorized sender: admin buddies are always admin, roster
+  // members get their ACL entry or the default role
+  XM_ROLE role_of_sender(const std::string &sender);
+  // minimum role for a command; some commands depend on their arguments
+  // (reading is viewer, changing is admin or operator)
+  XM_ROLE required_role(EXMPP_CMD_TYPES cmd, const std::string &msg);
+  RPC_SRV_RESULT proc_cmd_acl(std::string msg, std::string &returnval);
   void set_active_jid(const std::string &jid);
   int session_loop();
   int probe_loop();
@@ -413,7 +424,7 @@ class XmppMgr : public ADXmppConsumer,
   RPC_SRV_RESULT proc_cmd_relay_message(std::string msg, std::string &returnval,
                                         std::string sender);
 
-  std::string print_help();
+  std::string print_help(XM_ROLE role);
   RPC_SRV_RESULT LoadAliasList(std::string listFile);
   RPC_SRV_RESULT ExtendAliasList(std::string listFile, std::string key,
                                  std::string val);
@@ -455,6 +466,7 @@ public:
   inline void SetEventSubscrListFilePath(std::string filepath) {
     EventSubscrListFile = filepath;
   };
+  inline void SetAclFilePath(std::string filepath) { AclFile = filepath; };
   inline void SetUpdateurlFilePath(std::string filepath) {
     UpdateUrlFile = filepath;
   };

@@ -77,6 +77,25 @@ This lightweight XMPP chatbot is built using the Gloox XMPP library and designed
    docker stop xmpp-chatbot
    ```
 
+## Roles: who may run what
+
+Every contact that the bot answers has a role:
+
+- **admin**: the `adminbuddy` (and `bkupadminbuddy`) from `xmpp-login.txt`, plus anyone listed as admin in the ACL file. Can run everything, including `shellcmd`, `reboot`, buddy management and `acl`.
+- **operator**: may run controls (gpio set, sonoff, display, sleep, identify) and read everything.
+- **viewer**: the default for every other roster member. Read-only commands (status, lists, `help`).
+
+Roles live in a file with one `jid role` per line, passed with `--aclfile` (the Docker image uses `/xmpp-data/xmpp-acl.txt`). Admins manage it over chat:
+
+```
+acl                                 list roles
+acl family@myxmppserver operator    set a role (persisted)
+acl family@myxmppserver remove      back to the default role
+acl reload                          after editing the file by hand
+```
+
+A denied command answers `return=ActionBlocked : result=requires <role>`. Contacts that are not in the roster are ignored entirely.
+
 ## BOSH Connection (For Corporate Networks)
 
 If your network blocks XMPP port 5222 but allows HTTPS (port 443), you can use BOSH (Bidirectional-streams Over Synchronous HTTP) to tunnel XMPP traffic over HTTPS.

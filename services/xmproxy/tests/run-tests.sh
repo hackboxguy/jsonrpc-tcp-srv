@@ -11,6 +11,7 @@
 #   1. chat golden regression   (test_chat_regression.py)
 #   2. guest access baseline    (test_guest_access.py)
 #   3. TCP JSON-RPC regression  (tcp-json-rpc-client with utils/tests/xmproxy-test)
+#   3b. roles and ACL enforcement (test_acl.py)
 #   4. stress: two senders while the XMPP server restarts (test_stress.py)
 #   5. failover to the fallback account and back (test_failover.py)
 #   6. resilience: server restart, peer restart, SIGTERM (test_resilience.py)
@@ -76,14 +77,14 @@ say "daemons"
 stop_daemons
 rm -rf "$RUN"; mkdir -p "$RUN"
 cp "$HERE/fixtures/xmpp-alias-list.txt" "$HERE/fixtures/xmpp-botname.txt" "$RUN/"
-: > "$RUN/xmpp-evntsubscr.txt"
+: > "$RUN/xmpp-evntsubscr.txt"; : > "$RUN/xmpp-acl.txt"
 "$INSTALL/bin/sysmgr" --syscfg=docker --emulation >"$RUN/sysmgr.log" 2>&1 &
 echo $! > "$RUN/sysmgr.pid"
 sleep 1
 "$INSTALL/bin/xmproxysrv" --debuglog --syscfg=docker --port=$XMPROXY_PORT \
     --loginfile="$HERE/fixtures/xmpp-login.txt" \
     --aliaslist="$RUN/xmpp-alias-list.txt" --botname="$RUN/xmpp-botname.txt" \
-    --evntsubscr="$RUN/xmpp-evntsubscr.txt" --iface=lo >"$RUN/xmproxysrv.log" 2>&1 &
+    --evntsubscr="$RUN/xmpp-evntsubscr.txt" --aclfile="$RUN/xmpp-acl.txt" --iface=lo >"$RUN/xmproxysrv.log" 2>&1 &
 echo $! > "$RUN/xmproxysrv.pid"
 for i in $(seq 1 30); do
     if "$VENV/bin/python" - <<PY 2>/dev/null; then break; fi
@@ -110,6 +111,9 @@ if [ ${#EXTRA[@]} -eq 0 ]; then
         --responses="$ROOT/utils/tests/xmproxy-test/responses.txt" --repeat=1 2>&1)
     echo "$TCPOUT"
     echo "$TCPOUT" | grep -q "mismatch: 0" && echo "$TCPOUT" | grep -q "received: 7" || FAILS=$((FAILS+1))
+
+    say "3b roles and ACL enforcement"
+    RUN_DIR="$RUN" timeout 300 "$VENV/bin/python" "$HERE/test_acl.py" || FAILS=$((FAILS+1))
 
     if [ "$QUICK" = 0 ]; then
         say "4/6 stress with server restarts"

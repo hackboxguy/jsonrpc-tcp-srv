@@ -48,6 +48,8 @@ The runner:
    - guest access baseline (`test_guest_access.py`),
    - TCP JSON-RPC regression (`tcp-json-rpc-client` with
      `utils/tests/xmproxy-test/`),
+   - roles and ACL (`test_acl.py`): viewer, operator and admin behavior of
+     the guest account, `acl` command, persistence and reload,
    - stress (`test_stress.py`): admin and guest each send 250 commands while
      Prosody is restarted twice; passes only with zero lost or extra replies,
    - failover (`test_failover.py`): primary stopped, bot answers as the
@@ -104,6 +106,16 @@ case in `cases.json`.
 - Client: `tests/xmppclient.py`, a small slixmpp wrapper. `ask()` sends one
   message and collects replies until the bot has been quiet for 1.5 s.
 - Ports: Prosody 5222, sysmgr 40001, xmproxysrv 40005. All on 127.0.0.1.
+
+## Roles and the ACL file
+
+`--aclfile=PATH` names a file with one `jid role` per line (roles `admin`,
+`operator`, `viewer`; `#` starts a comment). The admin buddies from the login
+file are always admin. Roster members without an entry are viewers. JIDs
+outside the roster are ignored. Over chat, an admin runs `acl` to list,
+`acl <jid> <role>` to set (persisted to the file), `acl <jid> remove`, and
+`acl reload` after editing the file by hand. The rig runs with an initially
+empty `.run/xmpp-acl.txt`.
 
 ## Runtime tuning keys (login file) and logging
 
