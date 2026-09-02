@@ -1,8 +1,7 @@
 { "jsonrpc": "2.0", "method": "get_online_status", "id": 0 }
-{ "jsonrpc": "2.0", "method": "get_devop_state", "id": 1 }
-{ "jsonrpc": "2.0", "method": "reset_task_status", "id": 2 }
-{ "jsonrpc": "2.0", "method": "trigger_factory_restore", "id": 3 }
-{ "jsonrpc": "2.0", "method": "get_rpc_req_status", "params": { "taskId": "1" }, "id": 5 }
-{ "jsonrpc": "2.0", "method": "get_settings_status", "id": 6 }
-{ "jsonrpc": "2.0", "method": "reset_task_status", "id": 7 }
-{ "jsonrpc": "2.0", "method": "trigger_settings_save", "id": 8 }
+{ "jsonrpc": "2.0", "method": "get_async_task", "id": 1 }
+{ "jsonrpc": "2.0", "method": "get_inbox_count", "id": 2 }
+{ "jsonrpc": "2.0", "method": "get_inbox_message", "params": { "index": "0" }, "id": 3 }
+{ "jsonrpc": "2.0", "method": "empty_inbox", "id": 4 }
+{ "jsonrpc": "2.0", "method": "get_inbox_count", "id": 5 }
+{ "jsonrpc": "2.0", "method": "send_message", "params": { "to": "nobody@localhost", "msg": "hello" }, "id": 6 }

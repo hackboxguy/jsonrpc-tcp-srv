@@ -1,0 +1,242 @@
+# xmproxy IoT endpoint — Delivery plan
+
+Companion to [prd.md](prd.md). Work is split into small buckets. Each bucket
+is planned in detail right before it starts, built, then stopped at a
+checkpoint where the owner reviews the output and confirms the decisions
+listed for that bucket. No bucket starts before the previous checkpoint is
+signed off.
+
+Rules that apply to every bucket:
+
+- Existing text commands and their replies do not change (S4 in the PRD).
+- C++11, gloox, json-c only. OpenWrt cross build must still pass.
+- Every bucket adds or extends automated tests runnable with one command.
+- Every bucket ends with a short written summary of what changed, what was
+  tested and how, and which decisions the owner must confirm.
+
+## Bucket overview
+
+| # | Bucket | Why it is in this position | Size |
+|---|---|---|---|
+| 0 | Baseline and test rig | Nothing later can be verified without it | S |
+| 1 | Stability core: thread safety, backoff, shutdown, logging | The app will drive far more traffic than a human; fix the foundation first | M |
+| 2 | Fallback account with return to primary | Owner's explicit robustness wish; builds on the new connection state machine | M |
+| 3 | Roles and ACL enforcement | Must exist before the structured mode widens the attack surface | S |
+| 4 | JSON-RPC 2.0 over XMPP | The machine-to-machine core | M |
+| 5 | Device-served manifest | What the app renders | M |
+| 6 | Subscriptions, indicator polling, notifications | Push side of the product | M |
+| 7 | Legacy retirement and hardening | Safer after behavior is pinned by tests | S |
+| 8 | Pi 4 packaging, soak test, release | Proves the success criteria on the real target | M |
+
+Sizes: S about one session, M two to three sessions.
+
+## Bucket 0 — Baseline and test rig
+
+Scope
+- Reproducible local build script for this machine (gloox 1.0.28 and json-c
+  are installed) and a documented OpenWrt cross-build check.
+- Test rig: Prosody in Docker with three pre-created accounts (bot, admin,
+  guest) on a throwaway domain; a Python test client (slixmpp) that logs in,
+  sends a message, and asserts on the reply; a runner script that starts the
+  rig, starts the daemon with a test login file, runs the tests and tears down.
+- Golden chat regression: send every enabled text command that is safe to run
+  (no reboot, poweroff, shell) and record the replies as golden files. This
+  pins current behavior for S4.
+- Fix the copy-pasted xmproxy TCP test request file so the existing
+  tcp-json-rpc-client test is meaningful.
+
+Deliverables
+- `services/xmproxy/tests/` with rig compose file, test client, golden files,
+  and a single `run-tests.sh`.
+- `services/xmproxy/docs/dev-setup.md`.
+
+Acceptance
+- `run-tests.sh` passes on a clean checkout on this machine.
+- Golden files exist for every safe text command.
+
+Decisions to verify at checkpoint
+- D10: Python test client is acceptable as a development-only dependency. (confirmed 2026-09-02)
+- Q1: Prosody-only test coverage is enough. (confirmed 2026-09-02)
+
+Status: done 2026-09-02 on branch `m2m-extension`. Findings recorded in the
+findings log below and folded into bucket 1.
+
+## Bucket 1 — Stability core
+
+Scope
+- F1 from the findings log: heap corruption in the shared JSON-RPC library's
+  response thread (seen as a sysmgr segfault). Find and fix in
+  `lib/lib-jsonrpc-tcp` since xmproxysrv uses the same code.
+- F2 from the findings log: re-subscribe to sysmgr, gpio and sms events when
+  the peer service restarts, so async completions are not lost.
+- Serialize all gloox client access behind one lock or an outbound queue
+  drained by the connection thread. Make the client pointer lifecycle safe.
+- Protect the command queue, inbox, session map and async task list.
+- Reconnect with exponential backoff, cap and jitter; configurable.
+- Correct keepalive ping accounting and timeout.
+- Bounded, clean shutdown on SIGTERM (no second Ctrl-C).
+- Log lines with timestamp and level; a `--loglevel` option.
+- Stress test in the rig: 1000 rapid commands from two senders while the rig
+  cuts the network several times.
+
+Acceptance
+- Stress test passes with no lost or duplicated replies.
+- Golden chat regression unchanged.
+- No data race reported by ThreadSanitizer on the x86 build.
+
+Decisions to verify at checkpoint
+- BOSH mode keeps its blocking receive with locked sends, documented as a
+  known limitation; TCP mode uses timed receive with an outbound queue.
+
+## Bucket 2 — Fallback account
+
+Scope
+- Login file keys for a fallback account and its optional BOSH and TLS
+  settings.
+- Connection state machine: primary, primary-failing (count), on-fallback,
+  probing-primary, switching-back.
+- Background probe of the primary while on fallback; graceful switch back.
+- `describe` groundwork: a place to report both JIDs.
+- Rig test: block the primary at the network level, assert fallback within the
+  target, unblock, assert return within the target.
+
+Acceptance
+- S3 targets met in the rig.
+
+Decisions to verify at checkpoint
+- Q2: fallback on the same server versus a different server.
+- Failure threshold N and probe interval defaults.
+
+## Bucket 3 — Roles and ACL
+
+Scope
+- ACL file format and loader; admin chat commands to list, add, remove, reload.
+- Assign a minimum role to every entry in the command table; enforce it in the
+  dispatcher for chat mode (the JSON path reuses the same check in bucket 4).
+- Clear denial reply and log line.
+- Rig tests with the guest account attempting admin commands.
+
+Acceptance
+- S5 holds for every admin command.
+- Golden regression unchanged for the admin account.
+
+Decisions to verify at checkpoint
+- D11: default role for unlisted roster members.
+- The exact role assigned to each existing command.
+
+## Bucket 4 — JSON-RPC 2.0 over XMPP
+
+Scope
+- Detector and parser for JSON bodies; single and batch.
+- Methods: `ping`, `describe`, `list_commands`, `exec`.
+- Error code set and response builder.
+- Async task completion as a notification to the requester.
+- Role check reused from bucket 3.
+- Protocol spec in `docs/protocol.md`.
+- Test client gains a JSON mode; tests cover every method, batch, malformed
+  input, and unauthorized calls.
+
+Acceptance
+- Every method round-trips in the rig; malformed input never crashes or hangs
+  the daemon.
+
+Decisions to verify at checkpoint
+- Method names and error codes in `protocol.md`.
+- Whether `exec` may run semicolon batches or only single commands.
+
+## Bucket 5 — Manifest
+
+Scope
+- Manifest schema in `docs/manifest.md`; loader with validation; `get_manifest`
+  method; admin `manifest reload` command; error reporting to admin.
+- Two sample manifests (Domoticz home, bare Pi).
+- Tests: valid, invalid, reload keeps the previous manifest on error.
+
+Acceptance
+- S6 holds. The reference client can print a text rendering of the manifest.
+
+Decisions to verify at checkpoint
+- Control types and fields in the schema.
+- Manifest file location and name on the Pi.
+
+## Bucket 6 — Subscriptions and notifications
+
+Scope
+- `subscribe` / `unsubscribe`, persistence per JID, topics.
+- Indicator poller: per-interval execution, change detection, initial value on
+  subscribe, rate limiting.
+- Bridge existing gpio and sysmgr events to topics.
+- Tests: change detection, no notification without change, rate limit, restart
+  keeps subscriptions.
+
+Acceptance
+- Reference client shows an indicator updating live while its underlying
+  command output changes in the rig.
+
+Decisions to verify at checkpoint
+- D13: fire-and-forget delivery.
+- Q3: value and manifest size limits.
+
+## Bucket 7 — Legacy retirement and hardening
+
+Scope
+- Move GSM, SMS, USSD and firmware-update commands behind a CMake option that
+  defaults off; delete dead SMS RPC scaffolding.
+- Replace fixed char buffers and unchecked strcpy/sprintf in xmproxy sources.
+- Remove duplicated CMake link branches.
+- Update CLAUDE.md and README to match the code.
+
+Acceptance
+- Golden regression unchanged with the option off (legacy commands absent from
+  help, which is the intended change) and on.
+
+Decisions to verify at checkpoint
+- D12: option default off; whether to delete instead.
+
+## Bucket 8 — Pi 4 packaging, soak and release
+
+Scope
+- Install script and systemd unit for Raspberry Pi OS Lite, non-root user,
+  proper file locations, log rotation.
+- 72 h soak with an indicator polling every 10 s and scripted network cuts;
+  latency measurement for S1.
+- Release notes, version tag, updated Docker image.
+
+Acceptance
+- S1, S2 and S3 measured and recorded in `docs/soak-report.md`.
+
+## Proposed additions (not yet scheduled, owner to decide)
+
+Raised at the bucket 0 checkpoint. Each names the bucket it would join.
+
+| Id | Proposal | Would join |
+|---|---|---|
+| P1 | Per-command execution timeout and a bounded command queue, so one hung command cannot block every other sender. | bucket 1 |
+| P2 | Admin `status` chat command and `describe` fields: connection state, active account (primary or fallback), uptime, queue depth, last error. | bucket 1 and 2 |
+| P3 | Duplicate suppression in the JSON path: remember (sender, request id) for a short window so a stanza resent by the server after a reconnect does not run a control twice. | bucket 4 |
+| P4 | `system.heartbeat` topic at a slow interval so the app can show "device alive" and detect a silent death. | bucket 6 |
+| P5 | `xmproxysrv --check-config` that validates login, ACL and manifest files and exits, for use before `systemctl restart`. | bucket 5 |
+| P6 | Warn loudly when the login file is world readable or `tlsverify: false` is set. | bucket 8 |
+| P7 | Run the rig against the Snikket server image instead of Prosody 0.11.9 once the server wrapper work starts, for fidelity with the real deployment. | bucket 8 |
+| P8 | Optional bucket 9: client-certificate device authentication. Device holds an X.509 client certificate and logs in with SASL EXTERNAL (XEP-0178) instead of a password; gloox supports client certificates and the EXTERNAL mechanism. Server side needs Prosody's client-certificate modules, which Snikket does not enable by default, so this pairs with the Snikket wrapper project. Benefits: no password on the device, revocation by certificate, and a path to per-device identity. | new bucket 9 |
+
+## Findings log
+
+Problems discovered while building the rig, with the bucket that owns them.
+
+| Id | Found | Finding | Owner |
+|---|---|---|---|
+| F1 | bucket 0 | `sysmgr` segfaulted in `malloc` inside `json_object_new_int64`, called from `ADJsonRpcProxy::json_send_result_response_string` on the RPC response thread, while several clients were talking to the services at once. Heap corruption in `lib/lib-jsonrpc-tcp`, which xmproxysrv shares. Core dump was captured on the dev machine. | bucket 1 |
+| F2 | bucket 0 | xmproxysrv subscribes to sysmgr/gpio/sms events once at startup. If the peer restarts, completions of async commands (identify, shellcmd) never arrive and the chat reply stays at InProgress. Restarting xmproxysrv fixes it, so re-subscription is missing. | bucket 1 |
+| F3 | bucket 0 | An unknown JID gets no reply at all, not even a denial. Fine for humans, but an app needs an explicit error to show. | bucket 3 |
+| F4 | bucket 0 | `utils/tests/xmproxy-test/requests.txt` contained sysmgr requests; replaced with real xmproxy RPCs. | fixed in bucket 0 |
+
+## Checkpoint template
+
+Each bucket ends with a message to the owner containing:
+
+1. What changed (files, behaviors).
+2. What was tested, the command to rerun it, and the result.
+3. Decisions to confirm before the next bucket, each with the recommended
+   answer.
+4. Anything deliberately left out and why.

@@ -1,0 +1,153 @@
+{
+  "_comment": "Golden chat regression cases for xmproxysrv. Each case is sent by the admin account. 'normalize' holds [regex, replacement] pairs applied to actual and golden text before comparing, for values that legitimately differ per host or run. 'min_replies' waits for that many replies (async commands answer twice).",
+  "cases": [
+    {
+      "name": "echo",
+      "cmd": "echo"
+    },
+    {
+      "name": "echo_upper",
+      "cmd": "Echo"
+    },
+    {
+      "name": "help",
+      "cmd": "help"
+    },
+    {
+      "name": "help_upper",
+      "cmd": "Help"
+    },
+    {
+      "name": "account",
+      "cmd": "account"
+    },
+    {
+      "name": "account_mixedcase",
+      "cmd": "AcCount"
+    },
+    {
+      "name": "botname",
+      "cmd": "botname"
+    },
+    {
+      "name": "version",
+      "cmd": "version",
+      "normalize": [
+        [
+          "\\d+",
+          "N"
+        ]
+      ]
+    },
+    {
+      "name": "uptime",
+      "cmd": "uptime",
+      "normalize": [
+        [
+          "result=[\\s\\S]*",
+          "result=<uptime>"
+        ]
+      ]
+    },
+    {
+      "name": "hostname",
+      "cmd": "hostname",
+      "normalize": [
+        [
+          "result=[\\s\\S]*",
+          "result=<host>"
+        ]
+      ]
+    },
+    {
+      "name": "localip",
+      "cmd": "localip",
+      "_note": "rig runs xmproxysrv with --iface=lo so the value is deterministic"
+    },
+    {
+      "name": "buddylist",
+      "cmd": "buddylist"
+    },
+    {
+      "name": "acceptbuddylist",
+      "cmd": "acceptbuddylist"
+    },
+    {
+      "name": "alias_list_seed",
+      "cmd": "alias"
+    },
+    {
+      "name": "alias_use_seed",
+      "cmd": "greeting"
+    },
+    {
+      "name": "alias_add",
+      "cmd": "alias t1=botname"
+    },
+    {
+      "name": "alias_use_new",
+      "cmd": "t1"
+    },
+    {
+      "name": "alias_list_after_add",
+      "cmd": "alias"
+    },
+    {
+      "name": "alias_delete",
+      "cmd": "alias t1="
+    },
+    {
+      "name": "alias_use_deleted",
+      "cmd": "t1"
+    },
+    {
+      "name": "unknown_command",
+      "cmd": "nosuchcommand 1 2"
+    },
+    {
+      "name": "batch_two",
+      "cmd": "account;botname",
+      "min_replies": 2
+    },
+    {
+      "name": "sleep_1",
+      "cmd": "sleep 1"
+    },
+    {
+      "name": "gpio_no_service",
+      "cmd": "gpio 4"
+    },
+    {
+      "name": "dispclear_no_service",
+      "cmd": "dispclear"
+    },
+    {
+      "name": "display_no_service",
+      "cmd": "display 1 hello"
+    },
+    {
+      "name": "sonoff_missing_arg",
+      "cmd": "sonoff"
+    },
+    {
+      "name": "shellcmd_missing_arg",
+      "cmd": "shellcmd"
+    },
+    {
+      "name": "relaymsg_not_buddy",
+      "cmd": "relaymsg nobody@localhost hello"
+    },
+    {
+      "name": "identify_async",
+      "cmd": "identify",
+      "min_replies": 2,
+      "timeout": 12,
+      "normalize": [
+        [
+          "taskID=\\d+",
+          "taskID=N"
+        ]
+      ]
+    }
+  ]
+}

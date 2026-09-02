@@ -1,0 +1,3 @@
+user: bot@localhost
+pw: botpw-test
+adminbuddy: admin@localhost

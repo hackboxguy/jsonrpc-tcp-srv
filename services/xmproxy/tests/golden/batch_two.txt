@@ -1,0 +1,3 @@
+return=Success : result=bot@localhost
+----- reply -----
+return=Success : result=xmproxy-test-bot

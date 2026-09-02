@@ -1,0 +1,9 @@
+# build trees
+Output/
+Output-*.log
+build/
+# xmproxy test rig, runtime state and virtualenv (development only)
+services/xmproxy/tests/.venv/
+services/xmproxy/tests/.run/
+__pycache__/
+*.pyc

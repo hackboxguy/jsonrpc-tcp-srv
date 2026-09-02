@@ -1,0 +1,26 @@
+version 
+uptime 
+hostname [name]
+publicip 
+localip 
+gpio <gpio_num> [sts(0/1)]
+eventgpio <gpio_num> [sts(0/1)]
+alias name=cmd
+sleep <seconds>
+account 
+botname [name]
+buddylist 
+shellcmd <command>
+shellcmdresp 
+shellcmdtrig <command>
+identify 
+sonoff <ip/hostname> [sts(on/off/toggle)]
+dispclear 
+display <line1/line2/line3..]> <message>
+dispbklt <sts[on/off]>
+acceptbuddy [buddyID]
+rejectbuddy [buddyID]
+subscribe [buddyID]
+unsubscribe [buddyID]
+acceptbuddylist 
+relaymsg <buddyID> <message>
