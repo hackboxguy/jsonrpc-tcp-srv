@@ -258,7 +258,9 @@ int ADGenericChain::remove_all(void) {
   while (base_chain.pNext != NULL) {
     if (disable_autoremove == 0) {
       free_chain_element_data(base_chain.pNext->pData);
-      free(base_chain.pNext->pData);
+      // chain elements are created by their producers with new (see
+      // OBJECT_MEM_NEW); release the storage with the matching operator.
+      ::operator delete(base_chain.pNext->pData);
       base_chain.pNext->pData = NULL;
     }
     remove();

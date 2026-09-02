@@ -1,3 +1,9 @@
 user: example-bot@exampleserver
 pw: supersecretpw;-)
 adminbuddy: example-buddy@exampleserver
+# optional connection tuning (defaults shown), see services/xmproxy/docs/dev-setup.md
+# pinginterval: 90     seconds between keepalive pings
+# pingmisses: 3        unanswered pings before the session is dropped and reconnected
+# reconnectmin: 2      first reconnect delay in seconds (doubles per failure, plus jitter)
+# reconnectmax: 60     upper bound of the reconnect delay in seconds
+# asynctimeout: 300    seconds before an unanswered async command is reported as Timeout

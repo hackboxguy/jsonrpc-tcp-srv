@@ -36,12 +36,18 @@ int ADJsonRpcProxy::free_chain_element_data(void *element,
   if (pObj->getID() == ReqRespChainID) {
     api_task_obj *objData;
     objData = (api_task_obj *)element;
-    if (objData->pNetData->data_buffer != NULL)
-      MEM_DELETE(objData->pNetData->data_buffer);
-    if (objData->pNetData != NULL)
-      MEM_DELETE(objData->pNetData);
-    if (objData->json_resp_obj != NULL)
-      MEM_DELETE(objData->json_resp_obj);
+    // data_buffer comes from ARRAY_MEM_NEW (new[]), pNetData from
+    // OBJECT_MEM_NEW (new), json_resp_obj from json-c: release each with
+    // its matching deallocator (previously all went through free()).
+    if (objData->pNetData != NULL) {
+      if (objData->pNetData->data_buffer != NULL)
+        ARRAY_MEM_DELETE(objData->pNetData->data_buffer);
+      OBJ_MEM_DELETE(objData->pNetData);
+    }
+    if (objData->json_resp_obj != NULL) {
+      json_object_put(objData->json_resp_obj);
+      objData->json_resp_obj = NULL;
+    }
     if (objData->json_resp_string != NULL)
       MEM_DELETE(objData->json_resp_string);
   }
@@ -278,12 +284,14 @@ int ADJsonRpcProxy::json_send_error_response_string(
     json_object_object_add(intrnl_obj, "id", NULL);
     break;
   }
-  sprintf(message, "%s", json_object_to_json_string(intrnl_obj));
+  snprintf(message, sizeof(message), "%s",
+           json_object_to_json_string(intrnl_obj));
   ServerSocket.schedule_response(sock_descriptor, message, strlen(message));
   if (socketlog)
     printf("%s<--%s\n", get_timestamp(), message);
+  // error_obj is owned by intrnl_obj after json_object_object_add; releasing
+  // it separately was a double put (json-c asserts on it).
   json_object_put(intrnl_obj);
-  json_object_put(error_obj);
   return 0;
 }
 int ADJsonRpcProxy::json_send_result_response_string(int id,
@@ -308,12 +316,14 @@ int ADJsonRpcProxy::json_send_result_response_string(int id,
     json_object_object_add(intrnl_obj, "result", tmp_obj);
   }
   json_object_object_add(intrnl_obj, "id", json_object_new_int(id));
-  sprintf(message, "%s", json_object_to_json_string(intrnl_obj));
+  snprintf(message, sizeof(message), "%s",
+           json_object_to_json_string(intrnl_obj));
   ServerSocket.schedule_response(sock_descriptor, message, strlen(message));
   if (socketlog)
     printf("%s<--%s\n", get_timestamp(), message);
-  if (tmp_obj != NULL)
-    json_object_put(tmp_obj);
+  // both result objects (task_obj->json_resp_obj or tmp_obj) are owned by
+  // intrnl_obj after json_object_object_add: one put releases everything.
+  task_obj->json_resp_obj = NULL;
   json_object_put(intrnl_obj);
   return 0;
 }
@@ -454,10 +464,13 @@ int ADJsonRpcProxy::json_process_rsponse() {
     return -1;
   }
   json_send_new_result(pTaskObj);
-  if (pTaskObj->pNetData->data_buffer != NULL)
-    MEM_DELETE(pTaskObj->pNetData->data_buffer);
-  if (pTaskObj->pNetData != NULL)
-    MEM_DELETE(pTaskObj->pNetData);
+  // json_resp_obj was handed to the response object inside
+  // json_send_result_response_string and released there.
+  if (pTaskObj->pNetData != NULL) {
+    if (pTaskObj->pNetData->data_buffer != NULL)
+      ARRAY_MEM_DELETE(pTaskObj->pNetData->data_buffer);
+    OBJ_MEM_DELETE(pTaskObj->pNetData);
+  }
   if (pTaskObj->json_resp_obj != NULL) {
     ;
   }

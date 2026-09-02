@@ -1,6 +1,7 @@
 #include "EvntHandler.h"
 #include "ADCmnPortList.h"
 #include "ADJsonRpcClient.hpp"
+#include "XmLog.h"
 #include "XmppMgr.h"
 #define EVENT_SYSMGR ADCMN_PORT_SYSMGR // 40001
 #define EVENT_BBXSMS ADCMN_PORT_BBOXSMS
@@ -10,102 +11,117 @@ EvntHandler::EvntHandler(std::string rpcName, int myIndex, bool emu, bool log,
                          XMPROXY_CMN_DATA_CACHE *pData)
     : ADJsonRpcMgrConsumer(rpcName, myIndex, emu, log) {
   pDataCache = pData;
-
-  // subscribe for events from sysmgr-service
-  sysmgrEventActive = false;
-  sysMgrSrvToken = -1;
-  // SUBSCRIBE_EVENT("172.29.10.1",0,&sysMgrSrvToken,0,-1,42513);
-
-  SUBSCRIBE_EVENT("127.0.0.1", EVENT_SYSMGR, &sysMgrSrvToken, EVENT_SYSMGR, -1,
-                  XMPROXY_JSON_PORT_NUMBER);
-  if (sysMgrSrvToken != -1)
-    sysmgrEventActive = true; // subscription is active
-  // std::cout<<"sysMgrSrvToken = "<<sysMgrSrvToken<<endl;
-  // second arg:40001 : port number of sysmgr
-  // thirdarg:sysMgrSrvToken: on success, sysmgr returns a unique token ID to
-  // xmproxy fourtharg: 40001 : xmproxy is giving out a unique ID, where sysmgr
-  // will return this ID on event so that xmproxy knows source of event
-  // fiftharg: -1     : xmproxy is requested to receive all events from gpio-srv
-  // sixth:4000x      : xmproxy is telling its port number where sysmgr will
-  // send events
-
-  // subscribe for events from bbox-sms-service
-  bboxSmsEventActive = false;
-  bboxSmsSrvToken = -1;
-  SUBSCRIBE_EVENT("127.0.0.1", EVENT_BBXSMS, &bboxSmsSrvToken, EVENT_BBXSMS, -1,
-                  XMPROXY_JSON_PORT_NUMBER);
-  if (bboxSmsSrvToken != -1)
-    bboxSmsEventActive = true; // subscription is active
-
-  // subscribe for events from gpio-service
-  gpioEventActive = false;
-  gpioSrvToken = -1;
-  SUBSCRIBE_EVENT("127.0.0.1", EVENT_GPIOCTL, &gpioSrvToken, EVENT_GPIOCTL, -1,
-                  XMPROXY_JSON_PORT_NUMBER);
-  if (gpioSrvToken != -1)
-    gpioEventActive = true; // subscription is active
+  debugLog = log;
+  resubscribe_ms = 0;
+  // second arg: port number of the peer; the peer returns a unique token on
+  // success (srvToken); cltToken tells the peer who we are so that events
+  // carry it back; eventNum -1 means all events; last arg is our own port
+  // where the peer delivers events.
+  Peer init[3] = {{"sysmgr", EVENT_SYSMGR, false, -1},
+                  {"bboxsms", EVENT_BBXSMS, false, -1},
+                  {"gpio", EVENT_GPIOCTL, false, -1}};
+  for (int i = 0; i < 3; i++)
+    peers[i] = init[i];
+  // the first subscribe happens in AttachHeartBeat(), once our own RPC
+  // server is listening and can receive the events
 }
 /* ------------------------------------------------------------------------- */
 EvntHandler::~EvntHandler() {
-  if (sysmgrEventActive == true) // unsubscribe only if subscription is active
-    UNSUBSCRIBE_EVENT("127.0.0.1", EVENT_SYSMGR, sysMgrSrvToken);
-  if (bboxSmsEventActive == true) // unsubscribe only if subscription is active
-    UNSUBSCRIBE_EVENT("127.0.0.1", EVENT_BBXSMS, bboxSmsSrvToken);
-  if (gpioEventActive == true) // unsubscribe only if subscription is active
-    UNSUBSCRIBE_EVENT("127.0.0.1", EVENT_GPIOCTL, gpioSrvToken);
+  std::lock_guard<std::mutex> lock(peerMutex);
+  for (int i = 0; i < 3; i++) {
+    if (peers[i].active) // unsubscribe only if subscription is active
+      UNSUBSCRIBE_EVENT("127.0.0.1", peers[i].port, peers[i].srvToken);
+  }
+}
+/* ------------------------------------------------------------------------- */
+// One subscribe attempt. The peer rejects a duplicate subscription (same
+// client token, port and event), so calling this while already subscribed is
+// harmless; after a peer restart it succeeds and yields a fresh token.
+void EvntHandler::subscribe_peer(Peer &peer, bool quiet) {
+  int token = -1;
+  SUBSCRIBE_EVENT("127.0.0.1", peer.port, &token, peer.port, -1,
+                  XMPROXY_JSON_PORT_NUMBER);
+  if (token != -1) {
+    if (peer.active && peer.srvToken != token)
+      XMLOG_WRN("events: %s restarted, re-subscribed (token %d -> %d)",
+                peer.name, peer.srvToken, token);
+    else if (!peer.active)
+      XMLOG_INF("events: subscribed to %s (token %d)", peer.name, token);
+    peer.active = true;
+    peer.srvToken = token;
+  } else if (!quiet) {
+    XMLOG_INF("events: %s not available on port %d", peer.name, peer.port);
+  }
+}
+void EvntHandler::resubscribe_all() {
+  std::lock_guard<std::mutex> lock(peerMutex);
+  for (int i = 0; i < 3; i++)
+    subscribe_peer(peers[i], true);
+}
+/* ------------------------------------------------------------------------- */
+int EvntHandler::AttachHeartBeat(ADTimer *pTimer) {
+  {
+    std::lock_guard<std::mutex> lock(peerMutex);
+    for (int i = 0; i < 3; i++)
+      subscribe_peer(peers[i], false);
+  }
+  pTimer->subscribe_timer_notification(this);
+  return 0;
+}
+int EvntHandler::timer_notification() {
+  resubscribe_ms += 100;
+  if (resubscribe_ms < EVNT_RESUBSCRIBE_PERIOD_MS)
+    return 0;
+  resubscribe_ms = 0;
+  resubscribe_all();
+  return 0;
 }
 /* ------------------------------------------------------------------------- */
 void EvntHandler::ReceiveEvent(int cltToken, int evntNum, int evntArg,
                                int evntArg2) {
-  //	std::cout << "EvntHandler::ReceiveEvent: clt_token = " <<cltToken<<"
-  // evnt_num = "<<evntNum<<" evnt_arg = "<<evntArg <<endl;
-  if (cltToken == EVENT_SYSMGR && evntNum == ADLIB_EVENT_NUM_SHUT_DOWN)
-    sysmgrEventActive =
-        false; // sysmgr is dead, subscription is not active any more
-  if (cltToken == EVENT_BBXSMS && evntNum == ADLIB_EVENT_NUM_SHUT_DOWN)
-    bboxSmsEventActive =
-        false; // bboxsms-srv is dead, subscription is not active any more
-  if (cltToken == EVENT_GPIOCTL && evntNum == ADLIB_EVENT_NUM_SHUT_DOWN)
-    gpioEventActive =
-        false; // gpio-srv is dead, subscription is not active any more
+  if (evntNum == ADLIB_EVENT_NUM_SHUT_DOWN) {
+    std::lock_guard<std::mutex> lock(peerMutex);
+    for (int i = 0; i < 3; i++) {
+      if (peers[i].port == cltToken && peers[i].active) {
+        XMLOG_WRN("events: %s shut down, subscription lost", peers[i].name);
+        peers[i].active = false; // re-subscribed by the heartbeat
+      }
+    }
+  }
 
   if (evntNum == ADLIB_EVENT_NUM_INPROG_DONE) {
     char taskIDString[255];
     char taskIDResult[255];
     taskIDResult[254] = '\0';
-    sprintf(taskIDString, "%d", evntArg);
+    snprintf(taskIDString, sizeof(taskIDString), "%d", evntArg);
     XmppMgr *pXmpp = (XmppMgr *)pDataCache->pXmpMgr;
-    // if(pXmpp->IsItMyAsyncTaskResp(evntArg,cltToken)==RPC_SRV_RESULT_SUCCESS)
     int xmpTID = -1;
     std::string to;
     if (pXmpp->AccessAsyncTaskList(evntArg, cltToken, false, &xmpTID, to) ==
         RPC_SRV_RESULT_SUCCESS) {
       ADJsonRpcClient Client;
       if (Client.rpc_server_connect("127.0.0.1", cltToken) != 0) {
-        LOG_DEBUG_MSG_1_ARG(true, "BRBOX:xmproxy",
-                            "EvntHandler::ReceiveEvent::Conn Err, cltToken=%d",
-                            cltToken);
-        return; // RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR;
+        XMLOG_ERR("events: cannot connect to peer on port %d for task %d",
+                  cltToken, evntArg);
+        pXmpp->RpcResponseCallback(RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR,
+                                   xmpTID, to);
+        return;
       }
-      RPC_SRV_RESULT result = Client.get_string_type_with_string_para(
+      Client.get_string_type_with_string_para(
           (char *)ADLIB_RPC_NAME_GET_TASK_STATUS,
           (char *)ADLIB_RPC_PARM_TASK_STS_ID, taskIDString, taskIDResult,
           (char *)ADLIB_RPC_PARM_TASK_STS);
       Client.rpc_server_disconnect();
       std::string finalRes = taskIDResult;
-      pXmpp->RpcResponseCallback(finalRes, xmpTID, to); // evntArg);
+      pXmpp->RpcResponseCallback(finalRes, xmpTID, to);
     } else {
-      LOG_DEBUG_MSG_2_ARG(true /*get_debug_log_flag()*/, "BRBOX:xmproxy",
-                          "EvntHandler::ReceiveEvent::Entry not Found!!! "
-                          "evntArg=%d,cltToken=%d",
-                          evntArg, cltToken);
+      XMLOG_DBG("events: completion for unknown task %d from port %d", evntArg,
+                cltToken);
     }
   } else if (cltToken == EVENT_GPIOCTL &&
              evntNum == ADLIB_EVENT_NUM_END) // TODO:correctly compare evntNum
                                              // with actual enum of gpio-srv
   {
-    // std::cout << "EvntHandler::ReceiveEvent: could be event from
-    // gpio-server(TODO) cltToken="<<cltToken<<" evntArg="<<evntArg<<endl;
     XmppMgr *pXmpp = (XmppMgr *)pDataCache->pXmpMgr;
     pXmpp->GpioEventCallback(evntNum, evntArg);
   }

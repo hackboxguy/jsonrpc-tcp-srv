@@ -1,12 +1,21 @@
-// note this implementation is taken from gloox library
-// example:message_example.cpp it depends on gloox library
+// gloox based XMPP client wrapper for xmproxysrv.
+//
+// Threading model (bucket 1 of the m2m-extension work):
+//  - connect() runs on the XMPP client thread and owns the gloox Client for
+//    the whole session. In TCP mode it polls recv() with a short timeout and
+//    drains the outbound queue between polls, so every gloox call happens on
+//    that one thread. In BOSH mode recv() blocks (see CLAUDE.md, timed recv
+//    causes "too many requests"), so queued items are sent from the calling
+//    thread under clientMutex: a documented limitation of BOSH mode.
+//  - Other threads never touch the gloox Client directly. They enqueue
+//    messages, pings and roster operations, or read the roster mirror.
 #ifndef __ADXMPP_PROXY_H_
 #define __ADXMPP_PROXY_H_
 
 #define CLIENT_TEST
 #define CLIENTBASE_TEST
 
-#include "ADThread.hpp"
+#include <atomic>
 #include <deque>
 #include <gloox/chatstatefilter.h>
 #include <gloox/chatstatehandler.h>
@@ -30,6 +39,10 @@
 #include <gloox/messagesessionhandler.h>
 #include <gloox/rostermanager.h>
 #include <iostream>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
 #include <vector>
 using namespace std;
 using namespace gloox;
@@ -40,7 +53,7 @@ class ADXmppConsumer  // observer
 public:
   virtual int onXmppMessage(std::string msg, std::string sender,
                             ADXmppProducer *pObj) = 0;
-  virtual ~ADXmppConsumer(){};
+  virtual ~ADXmppConsumer() {};
 };
 class ADXmppProducer {
   static int IDGenerator;
@@ -59,7 +72,7 @@ public:
     id = IDGenerator++;
     pConsumer = NULL;
   }
-  virtual ~ADXmppProducer(){};
+  virtual ~ADXmppProducer() {};
   int attach_callback(ADXmppConsumer *c) {
     // allow only one Consumer to be attached
     if (pConsumer == NULL) {
@@ -71,6 +84,12 @@ public:
   int getID() { return id; }
 };
 /* ------------------------------------------------------------------------- */
+// poll period of recv() in TCP mode: bounds the latency of outbound items
+#define ADXMPP_RECV_POLL_US 100000
+#define ADXMPP_DEFAULT_MAX_MISSED_PONGS 3
+#define ADXMPP_DISCONNECT_WAIT_MS 5000
+#define ADXMPP_OUTBOUND_QUEUE_MAX 512
+
 class ADXmppProxy : public MessageSessionHandler,
                     ConnectionListener,
                     LogHandler,
@@ -79,17 +98,18 @@ class ADXmppProxy : public MessageSessionHandler,
                     ChatStateHandler,
                     EventHandler,
                     RosterListener,
-                    public ADXmppProducer,
-                    public ADThreadConsumer {
+                    public ADXmppProducer {
 public:
   ADXmppProxy();
-  ~ADXmppProxy(); //{}
-  int disconnect();
+  ~ADXmppProxy();
+  // Blocks for the whole session; returns when the connection ends.
   int connect(char *user, char *password, std::string adminbuddy = "",
               std::string bkupadminbuddy = "", bool useBosh = false,
               std::string boshUrl = "", std::string boshHost = "",
               bool tlsVerify = true, std::string saslMech = "",
               bool tlsEnabled = true);
+  // Ask the session to end from any thread; waits (bounded) until it did.
+  int disconnect();
   std::string extractServerFromJID(const std::string &jid);
 
   // Helper function for BOSH URL parsing
@@ -100,22 +120,34 @@ public:
     std::string path;
   };
   BoshUrlComponents parseBoshUrl(const std::string &url);
+
+  // outbound API, safe from any thread (queued)
   int send_reply(std::string reply, std::string sender = "");
+  bool SendMessageToBuddy(std::string address, const std::string &body,
+                          const std::string &subject = "message");
+  void send_client_alive_ping();
+  int subscribe_buddy(std::string buddy);
+  int unsubscribe_buddy(std::string buddy);
+  void set_max_missed_pongs(int misses) { MaxMissedPongs = misses; }
+
   int receive_request(std::string request, std::string sender);
   bool get_connect_sts() { return connected; };
   void SetDebugLog(bool log);
-  void send_client_alive_ping();
   const std::string currentDateTime();
   bool getForcedDisconnect() { return DisconnectNow; }
   void setForcedDisconnect() { DisconnectNow = true; }
   bool getOnDemandDisconnect() { return OnDemandDisconnect; }
   void setOnDemandDisconnect(bool flag) { OnDemandDisconnect = flag; }
+  // true when the last connect() reached an authenticated session
+  bool last_session_authenticated() { return SessionAuthenticated; }
+  // true while connect() is executing (session thread busy)
+  bool is_session_running() { return SessionRunning; }
 
-  // for sending asyc-event to a buddy
-  bool SendMessageToBuddy(std::string address, const std::string &body,
-                          const std::string &subject = "message");
+  // roster mirror queries, safe from any thread
   int get_buddy_list(std::string &returnval);
   bool get_connected_status();
+  int get_buddy_online_state(std::string buddy);
+  bool IsMyBuddy(std::string buddyaddress);
 
   virtual void handleEvent(const Event &event); // = 0;
   virtual void onConnect();
@@ -152,52 +184,62 @@ public:
                                            const std::string & /*msg*/);
   virtual void handleNonrosterPresence(const Presence &presence);
 
-  std::deque<int> PingPipe; // fifo for processing xmpp ping requests
-  ADThread PingThread;
-  virtual int monoshot_callback_function(void *pUserData,
-                                         ADThreadProducer *pObj); //{return 0;};
-  virtual int thread_callback_function(void *pUserData,
-                                       ADThreadProducer *pObj) {
-    return 0;
-  };
   std::string convert_presence_enum_to_str(Presence::PresenceType presence);
   int accept_buddy(std::string buddy); // add to accept list
   int remove_buddy(std::string buddy); // remove from the accept list
   bool is_admin_user(std::string user);
-  int subscribe_buddy(std::string buddy);
-  int unsubscribe_buddy(std::string buddy);
   int proc_cmd_send_message(
       std::string to, std::string message,
       std::string subject); // used for sending messages to other clients
-  int get_buddy_online_state(std::string buddy);
   int get_accept_buddy_list(
       std::string &returnval); // accept_buddy list filled/removed by
                                // accept_buddy/remove_buddy calls
-  bool IsMyBuddy(std::string buddyaddress);
 
 private:
-  vector<std::string> BuddyList; // authorized accounts that can contact me
+  struct OutItem {
+    enum Type { MSG, PING, SUBSCRIBE, UNSUBSCRIBE } type;
+    std::string to;
+    std::string body;
+    std::string subject;
+    OutItem(Type t, const std::string &to_ = "", const std::string &body_ = "",
+            const std::string &subject_ = "")
+        : type(t), to(to_), body(body_), subject(subject_) {}
+  };
+  std::mutex outMutex;
+  std::deque<OutItem> outQueue;
+  std::mutex clientMutex; // guards j lifecycle and BOSH-mode direct sends
+  std::mutex rosterMutex;
+  std::set<std::string> rosterJids;         // bare JIDs in the roster
+  std::map<std::string, bool> rosterOnline; // bare JID -> any resource online
+  std::mutex acceptMutex;
   vector<std::string>
       AcceptBuddyList; // Accept these buddies if requested by admin
-  bool iConnect;       // shows status of onConnect/onDisconnect
-  bool DisconnectNow;
-  bool OnDemandDisconnect;
+
+  int enqueue(const OutItem &item);
+  void
+  flush_outbound(); // gloox-thread context (or under clientMutex in BOSH mode)
+  void perform(const OutItem &item); // requires j != NULL, gloox-thread context
+  void mirror_roster_from(const Roster &roster);
+
+  std::atomic<bool> iConnect; // shows status of onConnect/onDisconnect
+  std::atomic<bool> DisconnectNow;
+  std::atomic<bool> OnDemandDisconnect;
+  std::atomic<bool> DisconnectRequested;
+  std::atomic<bool> SessionAuthenticated;
+  std::atomic<bool> SessionRunning;
+  std::atomic<bool> connected;
   bool DebugLog;
   bool failed_authorization;
-  bool connected;
-  int HeartBeat;
-  // JID myJid;
+  int HeartBeat; // pings without pong, gloox-thread only
+  int MaxMissedPongs;
   Client *j;
 
   // BOSH connection parameters
-  bool UseBOSH;
+  std::atomic<bool> UseBOSH; // read by enqueue() on any thread
   std::string BoshURL;
   std::string BoshHost;
   bool TlsVerify;
   std::string SaslMech; // SASL mechanism: "scram-sha-1" or empty for default
-  // MessageSession *m_session;
-  // MessageEventFilter *m_messageEventFilter;
-  // ChatStateFilter *m_chatStateFilter;
   // sessions container
   struct Session {
     gloox::MessageSession *m_session;
@@ -206,7 +248,7 @@ private:
   };
   typedef std::map<std::string, Session> Sessions;
   Sessions mySessions;
-  std::string AdminBuddy;
-  std::string BkupAdminBuddy;
+  std::string AdminBuddy;     // guarded by rosterMutex (set per session,
+  std::string BkupAdminBuddy; // read by the worker thread)
 };
 #endif

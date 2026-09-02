@@ -4,6 +4,7 @@
 #include "ADGenericChain.hpp"
 #include "ADThread.hpp"
 #include <arpa/inet.h>
+#include <atomic>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -33,7 +34,7 @@ class ADNetConsumer {
 public:
   virtual int on_data_arrival(ADGenericChain *pRxChain,
                               ADNetProducer *pObj) = 0;
-  virtual ~ADNetConsumer(){};
+  virtual ~ADNetConsumer() {};
 };
 class ADNetProducer {
   static int IDGenerator;
@@ -57,7 +58,7 @@ public:
     id = IDGenerator++;
     pConsumer = NULL;
   }
-  virtual ~ADNetProducer(){};
+  virtual ~ADNetProducer() {};
   int attach_on_data_arrival(ADNetConsumer *c) {
     if (pConsumer == NULL) {
       pConsumer = c;
@@ -78,7 +79,7 @@ struct net_data_obj {
 
 public:
   net_data_obj() { data_buffer = NULL; };
-  ~net_data_obj(){};
+  ~net_data_obj() {};
 };
 class ADNetServer : public ADNetProducer,
                     public ADChainConsumer,
@@ -86,7 +87,8 @@ class ADNetServer : public ADNetProducer,
   ADLIB_TCP_SOCKET_TYPE sock_type;
   int socketlog;
   int connected;
-  unsigned char end_server;
+  std::atomic<unsigned char>
+      end_server; // set by stop_listening(), polled by the listen thread
   int listen_port;
   int listen_sd;
   int max_sd;

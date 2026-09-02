@@ -1,5 +1,6 @@
 #ifndef __ADTHREAD_H_
 #define __ADTHREAD_H_
+#include <atomic>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdlib.h>
@@ -11,7 +12,7 @@ public:
                                          ADThreadProducer *pObj) = 0;
   virtual int thread_callback_function(void *pUserData,
                                        ADThreadProducer *pObj) = 0;
-  virtual ~ADThreadConsumer(){};
+  virtual ~ADThreadConsumer() {};
 };
 class ADThreadProducer {
   static int IDGenerator;
@@ -40,7 +41,7 @@ public:
     id = IDGenerator++;
     pConsumer = NULL;
   }
-  virtual ~ADThreadProducer(){};
+  virtual ~ADThreadProducer() {};
   int subscribe_thread_callback(ADThreadConsumer *c) {
     if (pConsumer == NULL) {
       pConsumer = c;
@@ -64,8 +65,9 @@ class ADThread : public ADThreadProducer {
   THRD_TYPE th_type;
   void *user_data;
   bool init_flag;
-  THRD_STATE thread_state;
-  int tid;
+  std::atomic<THRD_STATE>
+      thread_state;     // set by stop_thread(), polled by the thread
+  std::atomic<int> tid; // written by the thread itself, read by stop_thread()
   pthread_t thread;
   pthread_attr_t attr;
   sem_t one_shot_sema;

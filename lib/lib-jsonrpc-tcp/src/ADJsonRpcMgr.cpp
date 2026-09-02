@@ -42,38 +42,44 @@ RPC_SRV_RESULT ADJsonRpcMgr::run_work(int cmd, unsigned char *pWorkData,
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       myTimer->forced_exit();
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket);
+      pWorkData = NULL;
       ret_val = RPC_SRV_RESULT_SUCCESS;
     } break;
     case EJSON_RPCGMGR_TRIGGER_DATASAVE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket);
+      pWorkData = NULL;
     } break;
     case EJSON_RPCGMGR_TRIGGER_FACTORY_STORE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket);
+      pWorkData = NULL;
     } break;
     case EJSON_RPCGMGR_TRIGGER_FACTORY_RESTORE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket);
+      pWorkData = NULL;
     } break;
     case EJSON_RPCGMGR_TRIGGER_RUN: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket);
+      pWorkData = NULL;
     } break;
     case EJSON_RPCMGR_SET_DEVOP_STATE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket);
+      pWorkData = NULL;
     } break;
     default:
       break;

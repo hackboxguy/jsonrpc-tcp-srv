@@ -143,7 +143,7 @@ int ADCmdlineHelper::free_chain_element_data(void *element,
     HelpInfoEntryObj *pEntry;
     pEntry = (HelpInfoEntryObj *)element;
     if (pEntry->help_msg != NULL)
-      MEM_DELETE(pEntry->help_msg);
+      ARRAY_MEM_DELETE(pEntry->help_msg); // allocated with ARRAY_MEM_NEW
   }
   return 0;
 }

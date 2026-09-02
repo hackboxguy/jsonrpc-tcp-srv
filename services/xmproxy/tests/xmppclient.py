@@ -18,21 +18,26 @@ log = logging.getLogger("xmppclient")
 
 
 class BotChat(ClientXMPP):
-    def __init__(self, jid, password, bot_jid, host="127.0.0.1", port=5222):
+    def __init__(self, jid, password, bot_jid, host="127.0.0.1", port=5222,
+                 plaintext=True):
         super().__init__(jid, password)
         self.bot_jid = bot_jid
         self._host = host
         self._port = port
         self._inbox = asyncio.Queue()
         self._ready = asyncio.Event()
-        # plaintext rig: no TLS offered by the server
-        self.enable_starttls = False
-        self.enable_direct_tls = False
-        self.enable_plaintext = True
-        self.plugin["feature_mechanisms"].unencrypted_plain = True
+        self.disconnects = 0
+        self._closing = False
+        if plaintext:
+            # local rig: no TLS offered by the server
+            self.enable_starttls = False
+            self.enable_direct_tls = False
+            self.enable_plaintext = True
+            self.plugin["feature_mechanisms"].unencrypted_plain = True
         self.add_event_handler("session_start", self._on_start)
         self.add_event_handler("message", self._on_message)
         self.add_event_handler("failed_auth", self._on_failed_auth)
+        self.add_event_handler("disconnected", self._on_disconnected)
 
     async def _on_start(self, _event):
         self.send_presence()
@@ -43,11 +48,23 @@ class BotChat(ClientXMPP):
         log.error("authentication failed for %s", self.boundjid)
         self._ready.set()
 
+    def _on_disconnected(self, _event):
+        # unexpected drop (for example the server restarted): reconnect
+        self.disconnects += 1
+        if not self._closing:
+            self._ready.clear()
+            log.warning("%s disconnected, reconnecting", self.boundjid.bare)
+            self.connect(host=self._host, port=self._port)
+
+    async def wait_ready(self, timeout=30):
+        await asyncio.wait_for(self._ready.wait(), timeout=timeout)
+
     def _on_message(self, msg):
         if msg["type"] in ("chat", "normal") and msg["body"]:
             self._inbox.put_nowait((msg["from"].bare, msg["body"]))
 
     async def __aenter__(self):
+        self._closing = False
         self.connect(host=self._host, port=self._port)
         await asyncio.wait_for(self._ready.wait(), timeout=15)
         if not self.is_connected():
@@ -55,6 +72,7 @@ class BotChat(ClientXMPP):
         return self
 
     async def __aexit__(self, *exc):
+        self._closing = True
         self.disconnect()
         await asyncio.sleep(0.2)
 

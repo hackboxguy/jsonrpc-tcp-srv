@@ -1,14 +1,17 @@
 #!/bin/bash
 # One-command test run for xmproxysrv against the local rig.
 #
-#   run-tests.sh [--no-build] [--keep] [--record] [--only NAME]
+#   run-tests.sh [--no-build] [--keep] [--record] [--only NAME] [--quick]
 #
 # Steps: build (unless --no-build), start Prosody rig, start sysmgr and
 # xmproxysrv with test fixtures, wait until the bot is online, run
 #   1. chat golden regression   (test_chat_regression.py)
 #   2. guest access baseline    (test_guest_access.py)
 #   3. TCP JSON-RPC regression  (tcp-json-rpc-client with utils/tests/xmproxy-test)
-# then stop everything (unless --keep). Exit code is non-zero on any failure.
+#   4. stress: two senders while the XMPP server restarts (test_stress.py)
+#   5. resilience: server restart, peer restart, SIGTERM (test_resilience.py)
+# then stop everything (unless --keep). --quick skips groups 4 and 5.
+# Exit code is non-zero on any failure.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -16,11 +19,12 @@ OUT="$ROOT/Output"
 INSTALL="$OUT/install"
 RUN="$HERE/.run"
 VENV="$HERE/.venv"
-BUILD=1; KEEP=0; EXTRA=()
+BUILD=1; KEEP=0; QUICK=0; EXTRA=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-build) BUILD=0 ;;
         --keep) KEEP=1 ;;
+        --quick) QUICK=1 ;;
         --record) EXTRA+=(--record) ;;
         --only) shift; EXTRA+=(--only "$1") ;;
         *) echo "unknown option $1"; exit 2 ;;
@@ -101,10 +105,22 @@ if [ ${#EXTRA[@]} -eq 0 ]; then
         --responses="$ROOT/utils/tests/xmproxy-test/responses.txt" --repeat=1 2>&1)
     echo "$TCPOUT"
     echo "$TCPOUT" | grep -q "mismatch: 0" && echo "$TCPOUT" | grep -q "received: 7" || FAILS=$((FAILS+1))
+
+    if [ "$QUICK" = 0 ]; then
+        say "4/5 stress with server restarts"
+        timeout 600 "$VENV/bin/python" "$HERE/test_stress.py" || FAILS=$((FAILS+1))
+
+        say "5/5 resilience (server restart, peer restart, SIGTERM)"
+        # runs last: it stops xmproxysrv with SIGTERM
+        RUN_DIR="$RUN" SYSMGR_BIN="$INSTALL/bin/sysmgr" XMPROXY_PORT=$XMPROXY_PORT \
+            timeout 300 "$VENV/bin/python" "$HERE/test_resilience.py" || FAILS=$((FAILS+1))
+        RESILIENCE_RAN=1
+    fi
 fi
 
 say "daemon health"
 for p in sysmgr xmproxysrv; do
+    if [ "$p" = xmproxysrv ] && [ "${RESILIENCE_RAN:-0}" = 1 ]; then echo "xmproxysrv stopped by the resilience test (expected)"; continue; fi
     if kill -0 "$(cat "$RUN/$p.pid")" 2>/dev/null; then echo "$p alive"; else echo "$p DIED during tests (see $RUN/$p.log)"; FAILS=$((FAILS+1)); fi
 done
 

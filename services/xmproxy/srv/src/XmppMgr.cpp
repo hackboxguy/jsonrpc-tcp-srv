@@ -118,8 +118,14 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
 /* ------------------------------------------------------------------------- */
 XmppMgr::XmppMgr() //: AckToken(0)
 {
-  CyclicTime_ms = CLIENT_ALIVE_PING_DURATION_MS; // 60000;//60seconds
+  PingIntervalSec = XMPP_DEFAULT_PING_INTERVAL_SEC;
+  PingMisses = XMPP_DEFAULT_PING_MISSES;
+  ReconnectMinSec = XMPP_DEFAULT_RECONNECT_MIN_SEC;
+  ReconnectMaxSec = XMPP_DEFAULT_RECONNECT_MAX_SEC;
+  AsyncTimeoutSec = XMPP_DEFAULT_ASYNC_TIMEOUT_SEC;
+  CyclicTime_ms = PingIntervalSec * 1000;
   event_period_ms = 0;
+  sweep_period_ms = 0;
   heartbeat_ms = 100;
   pMyTimer = NULL;
   LastFmwUpdateTaskID = 0;
@@ -141,7 +147,7 @@ XmppMgr::XmppMgr() //: AckToken(0)
   XmppBoshUrl = "";
   XmppBoshHost = "";
   XmppTlsVerify = true;
-  XmppTlsEnabled = true;  // Default: XMPP TLS (STARTTLS) enabled
+  XmppTlsEnabled = true; // Default: XMPP TLS (STARTTLS) enabled
   XmppSaslMech = "";
 #ifdef USE_AI_BOT
   botcli = NULL;
@@ -184,14 +190,41 @@ int XmppMgr::AttachHeartBeat(ADTimer *pTimer) {
   return 0;
 }
 int XmppMgr::timer_notification() {
+  sweep_period_ms += heartbeat_ms;
+  if (sweep_period_ms >= 10000) { // every 10 s: expire stale async tasks
+    sweep_period_ms = 0;
+    sweep_async_tasks();
+  }
   event_period_ms += heartbeat_ms;
-  if (event_period_ms <
-      CyclicTime_ms) // typically 60seconds of WhiteSpacePingTime
+  if (event_period_ms < CyclicTime_ms)
     return 0;
   event_period_ms = 0;
-  XmppProxy.send_client_alive_ping(); // every 60sec send whitespacePing to
-                                      // xmpp-server to be online always
+  XmppProxy.send_client_alive_ping(); // keepalive ping, queued to the
+                                      // session thread
   return 0;
+}
+// async commands whose completion event never arrived (peer restarted or
+// hung) get a Timeout reply so the requester is not left waiting forever
+void XmppMgr::sweep_async_tasks() {
+  std::vector<AyncEventEntry> expired;
+  {
+    std::lock_guard<std::mutex> lock(asyncMutex);
+    time_t now = time(NULL);
+    std::vector<AyncEventEntry>::iterator it = AsyncTaskList.begin();
+    while (it != AsyncTaskList.end()) {
+      if (now - it->created >= AsyncTimeoutSec) {
+        expired.push_back(*it);
+        it = AsyncTaskList.erase(it);
+      } else
+        ++it;
+    }
+  }
+  for (size_t i = 0; i < expired.size(); i++) {
+    XMLOG_WRN("async task %d (port %d) timed out after %d s", expired[i].taskID,
+              expired[i].srvPort, AsyncTimeoutSec);
+    RpcResponseCallback(RPC_SRV_RESULT_TIMEOUT, expired[i].xmppTID,
+                        expired[i].to);
+  }
 }
 /* ------------------------------------------------------------------------- */
 void XmppMgr::SetDebugLog(bool log) {
@@ -314,71 +347,95 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
     XmppProxy.send_reply(print_help(), sender);
   else if (msg.find("return=") != std::string::npos) {
     // this is the respose from another bot for a request from this bot
-    // cout<<"###reveived resp from another bot####### : "<<msg<<endl;
+    std::lock_guard<std::mutex> lock(inboxMutex);
     ResponseMsg = msg;    // keep this in a cache for later use
     Inbox.push_back(msg); // keep all incoming messages from other bots(with
                           // "return="" prefix)
-    // std::cout<<"Got Response Message: "<<ResponseMsg<<std::endl;
-    return 0; // just consume this message(do not autoreply)
-  } else if (AiAgentUrl != "") {
-    // redirect user commands to ollama hosted ai model
-    XmppProxy.send_reply(generate_ai_response(msg), sender);
+    return 0;             // just consume this message(do not autoreply)
   } else {
-    processCmd.push_back(XmppCmdEntry(msg, sender));
+    // everything else runs on the worker thread, including AI prompts, so
+    // the XMPP session thread is never blocked by a slow command
+    bool ai = (AiAgentUrl != "");
+    bool full = false;
+    {
+      std::lock_guard<std::mutex> lock(cmdMutex);
+      if (processCmd.size() >= XMPP_MAX_PENDING_CMDS)
+        full = true;
+      else
+        processCmd.push_back(XmppCmdEntry(msg, sender, ai));
+    }
+    if (full) {
+      XMLOG_WRN("command queue full (%d pending), refusing request from %s",
+                XMPP_MAX_PENDING_CMDS, sender.c_str());
+      const char *resTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
+      std::string response =
+          std::string("return=") + resTbl[RPC_SRV_RESULT_BUSY] + " : result=";
+      XmppProxy.send_reply(response, sender);
+      return 0;
+    }
     XmppCmdProcessThread.wakeup_thread(); // tell the worker to start working
   }
   return 0;
 }
 /* ------------------------------------------------------------------------- */
 int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
-  // cout<<"going to connect"<<endl;
-  int loginAttempt = 0;
-  while (1) {
-    // cout<<"XmppMgr::thread_callback_function: entering xmpp connect"<<endl;
-    LOG_DEBUG_MSG_1_ARG(
-        DebugLog, "BRBOX:xmproxy",
-        "XmppMgr::thread_callback_function::xmpp login attempt=%d",
-        ++loginAttempt);
-    if (XmppProxy.getOnDemandDisconnect() ==
-        false) // user has requested for disconnect via rpc
-      XmppProxy.connect((char *)XmppUserName.c_str(),
-                        (char *)XmppUserPw.c_str(), XmppAdminBuddy,
-                        XmppBkupAdminBuddy, XmppUseBosh, XmppBoshUrl,
-                        XmppBoshHost, XmppTlsVerify, XmppSaslMech,
-                        XmppTlsEnabled);
-    // cout<<"XmppMgr::thread_callback_function: exited xmpp connect"<<endl;
-    // XmppProxy.disconnect();
+  // session loop with exponential backoff and jitter: a session that
+  // authenticated resets the backoff, repeated failures grow it up to
+  // ReconnectMaxSec
+  int failures = 0;
+  unsigned int seed = (unsigned int)time(NULL) ^ (unsigned int)getpid();
+  while (!XmppProxy.getForcedDisconnect()) {
+    if (XmppProxy.getOnDemandDisconnect() == false) {
+      XMLOG_INF("xmpp: connecting as %s (attempt %d)", XmppUserName.c_str(),
+                failures + 1);
+      XmppProxy.connect(
+          (char *)XmppUserName.c_str(), (char *)XmppUserPw.c_str(),
+          XmppAdminBuddy, XmppBkupAdminBuddy, XmppUseBosh, XmppBoshUrl,
+          XmppBoshHost, XmppTlsVerify, XmppSaslMech, XmppTlsEnabled);
+      if (XmppProxy.last_session_authenticated())
+        failures = 0;
+      else
+        failures++;
+    }
     if (XmppProxy.getForcedDisconnect())
       break;
-
-    // before retrying wait 5sec
-    usleep(800000);
-    if (XmppProxy.getForcedDisconnect())
-      break;
-    usleep(800000);
-    if (XmppProxy.getForcedDisconnect())
-      break;
-    usleep(800000);
-    if (XmppProxy.getForcedDisconnect())
-      break;
-    usleep(800000);
-    if (XmppProxy.getForcedDisconnect())
-      break;
-    usleep(800000);
-    if (XmppProxy.getForcedDisconnect())
-      break;
-    // check why disconneted, if forced disconnect, then break the loop, else
-    // try to connect again
+    int delay_ms = ReconnectMinSec * 1000;
+    for (int i = 0; i < failures && i < 16 && delay_ms < ReconnectMaxSec * 1000;
+         i++)
+      delay_ms *= 2;
+    if (delay_ms > ReconnectMaxSec * 1000)
+      delay_ms = ReconnectMaxSec * 1000;
+    delay_ms += rand_r(&seed) % 1000; // jitter, avoids synchronized retries
+    if (XmppProxy.getOnDemandDisconnect())
+      delay_ms = 1000; // offline on request: just poll the flag
+    else
+      XMLOG_INF("xmpp: session ended, reconnecting in %d ms", delay_ms);
+    int slept = 0;
+    while (slept < delay_ms && !XmppProxy.getForcedDisconnect()) {
+      usleep(200000);
+      slept += 200;
+    }
   }
-  // cout<<"exiting after connect"<<endl;
+  XMLOG_INF("xmpp: session loop stopped");
   return 0;
 }
 /* ------------------------------------------------------------------------- */
 int XmppMgr::monoshot_callback_function(void *pUserData,
                                         ADThreadProducer *pObj) {
-  while (!processCmd.empty()) {
-    // TODO: handle semicolon separated multiple commands
-    XmppCmdEntry cmd = processCmd.front();
+  while (true) {
+    XmppCmdEntry cmd("", "");
+    {
+      std::lock_guard<std::mutex> lock(cmdMutex);
+      if (processCmd.empty())
+        break;
+      cmd = processCmd.front();
+      processCmd.pop_front();
+    }
+    if (cmd.aiPrompt) {
+      // redirect user commands to ollama hosted ai model
+      XmppProxy.send_reply(generate_ai_response(cmd.cmdMsg), cmd.sender);
+      continue;
+    }
 
     // std::string temp=cmd.cmdMsg;
     stringstream mystream(cmd.cmdMsg);
@@ -395,8 +452,7 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       std::string myresponse =
           "return=" + myresult + " : " + "result=" + myreturnval;
       XmppProxy.send_reply(myresponse, cmd.sender);
-      processCmd.pop_front();
-      return 0;
+      continue;
     }
     // check if it is an alias
     transform(cmd.cmdMsg.begin(), cmd.cmdMsg.end(), cmd.cmdMsg.begin(),
@@ -591,7 +647,6 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       std::string response = "return=" + result + " : " + "result=" + returnval;
       XmppProxy.send_reply(response, cmd.sender); // result+":"+returnval);
     }
-    processCmd.pop_front(); // after processing delete the entry
   }
   return 0;
 }
@@ -626,10 +681,8 @@ RPC_SRV_RESULT XmppMgr::RpcResponseCallback(std::string taskRes, int taskID,
 RPC_SRV_RESULT XmppMgr::AccessAsyncTaskList(int tid, int port,
                                             bool insertEntryFlag, int *xmpptID,
                                             std::string &sender) {
-  // mutex to protect cmn resource access (shared across threads)
-  static std::mutex mutex;
-  // lock mutex before accessing file
-  std::lock_guard<std::mutex> lock(mutex);
+  // AsyncTaskList is shared with the event thread and the timeout sweep
+  std::lock_guard<std::mutex> lock(asyncMutex);
   if (insertEntryFlag == true) {
     XmppTaskIDCounter++; // global task id counter for external xmpp clients
     AsyncTaskList.push_back(
@@ -729,7 +782,8 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
     } else if (key == "bkupadminbuddy:") {
       linestream >> XmppBkupAdminBuddy;
       if (DebugLog && XmppBkupAdminBuddy.size() > 0)
-        cout << "XmppMgr::Start: Backup admin buddy: " << XmppBkupAdminBuddy << endl;
+        cout << "XmppMgr::Start: Backup admin buddy: " << XmppBkupAdminBuddy
+             << endl;
     } else if (key == "bosh:") {
       linestream >> value;
       XmppUseBosh = (value == "true" || value == "True" || value == "TRUE");
@@ -746,7 +800,8 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
         cout << "XmppMgr::Start: BOSH Host: " << XmppBoshHost << endl;
     } else if (key == "tlsverify:") {
       linestream >> value;
-      XmppTlsVerify = !(value == "false" || value == "False" || value == "FALSE");
+      XmppTlsVerify =
+          !(value == "false" || value == "False" || value == "FALSE");
       if (DebugLog || XmppUseBosh)
         cout << "XmppMgr::Start: TLS Verify: "
              << (XmppTlsVerify ? "enabled" : "disabled") << endl;
@@ -755,9 +810,30 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
       if (DebugLog || !XmppSaslMech.empty())
         cout << "XmppMgr::Start: SASL Mechanism: "
              << (XmppSaslMech.empty() ? "default" : XmppSaslMech) << endl;
+    } else if (key == "pinginterval:") {
+      linestream >> value;
+      if (atoi(value.c_str()) >= 10)
+        PingIntervalSec = atoi(value.c_str());
+    } else if (key == "pingmisses:") {
+      linestream >> value;
+      if (atoi(value.c_str()) >= 1)
+        PingMisses = atoi(value.c_str());
+    } else if (key == "reconnectmin:") {
+      linestream >> value;
+      if (atoi(value.c_str()) >= 1)
+        ReconnectMinSec = atoi(value.c_str());
+    } else if (key == "reconnectmax:") {
+      linestream >> value;
+      if (atoi(value.c_str()) >= 1)
+        ReconnectMaxSec = atoi(value.c_str());
+    } else if (key == "asynctimeout:") {
+      linestream >> value;
+      if (atoi(value.c_str()) >= 10)
+        AsyncTimeoutSec = atoi(value.c_str());
     } else if (key == "xmpptls:") {
       linestream >> value;
-      XmppTlsEnabled = !(value == "false" || value == "False" || value == "FALSE");
+      XmppTlsEnabled =
+          !(value == "false" || value == "False" || value == "FALSE");
       if (DebugLog || XmppUseBosh)
         cout << "XmppMgr::Start: XMPP TLS (STARTTLS): "
              << (XmppTlsEnabled ? "enabled" : "disabled") << endl;
@@ -766,37 +842,42 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
 
   // Validate required fields
   if (XmppUserName.size() <= 0) {
-    cout << "XmppMgr::Start: Error - 'user:' field is required in config file" << endl;
+    cout << "XmppMgr::Start: Error - 'user:' field is required in config file"
+         << endl;
     return RPC_SRV_RESULT_FAIL;
   }
   if (XmppUserPw.size() <= 0) {
-    cout << "XmppMgr::Start: Error - 'pw:' field is required in config file" << endl;
+    cout << "XmppMgr::Start: Error - 'pw:' field is required in config file"
+         << endl;
     return RPC_SRV_RESULT_FAIL;
   }
 
   file.close();
 
-  // if (DebugLog) {
-  //   cout << "XmppMgr::Start:user     : " << XmppUserName << endl;
-  //   cout << "XmppMgr::Start:pw       : " << XmppUserPw << endl;
-  //   cout << "XmppMgr::Start:admin    : " << XmppAdminBuddy << endl;
-  //   cout << "XmppMgr::Start:adminbkup: " << XmppBkupAdminBuddy << endl;
-  // }
+  if (ReconnectMaxSec < ReconnectMinSec)
+    ReconnectMaxSec = ReconnectMinSec;
+  CyclicTime_ms = PingIntervalSec * 1000;
+  XmppProxy.set_max_missed_pongs(PingMisses);
+  XMLOG_INF("xmpp: user=%s admin=%s ping=%ds/%d misses reconnect=%d..%ds "
+            "asynctimeout=%ds",
+            XmppUserName.c_str(), XmppAdminBuddy.c_str(), PingIntervalSec,
+            PingMisses, ReconnectMinSec, ReconnectMaxSec, AsyncTimeoutSec);
+  if (!XmppTlsVerify)
+    XMLOG_WRN("xmpp: tlsverify is false, server certificate is NOT checked");
 
   XmppClientThread.start_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::Stop() {
-  // XmppProxy.disconnect();
-  int MaxTime = 0;
+  XMLOG_INF("xmpp: shutdown requested");
   XmppProxy.setForcedDisconnect();
-  XmppProxy.disconnect();
-  // while(XmppProxy.get_connect_sts()==true && MaxTime++<50) //max 5sec wait
-  //{
-  //	usleep(100000);
-  //	cout<<"waiting for disconnect"<<endl;
-  // }
-  // XmppClientThread.stop_thread();
+  XmppProxy.disconnect(); // bounded wait for the session to end
+  // let the session loop exit by itself before the thread is torn down
+  int waited = 0;
+  while (XmppProxy.is_session_running() && waited < 3000) {
+    usleep(100000);
+    waited += 100;
+  }
   XmppClientThread.stop_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
@@ -1718,6 +1799,10 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sleep(std::string msg) {
     return RPC_SRV_RESULT_ARG_ERROR;
   xpandarg(cmdArg); // e.g: sleep $timesec
   int sec = atoi(cmdArg.c_str());
+  if (sec < 0)
+    sec = 0;
+  if (sec > XMPP_MAX_SLEEP_SEC) // the worker is shared by every sender
+    sec = XMPP_MAX_SLEEP_SEC;
   usleep(sec * 1000 * 1000);
   return RPC_SRV_RESULT_SUCCESS;
 }
@@ -2408,18 +2493,21 @@ std::string XmppMgr::generate_ai_response(std::string &prompt) {
 }
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_count(int &count) {
+  std::lock_guard<std::mutex> lock(inboxMutex);
   count = Inbox.size();
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_msg(int index,
                                                std::string &message) {
-  if (index < Inbox.size()) {
+  std::lock_guard<std::mutex> lock(inboxMutex);
+  if (index >= 0 && (size_t)index < Inbox.size()) {
     message = Inbox[index];
     return RPC_SRV_RESULT_SUCCESS;
   } else
     return RPC_SRV_RESULT_VALUE_OUT_OF_RANGE;
 }
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_empty() {
+  std::lock_guard<std::mutex> lock(inboxMutex);
   Inbox.clear();
   return RPC_SRV_RESULT_SUCCESS;
 }

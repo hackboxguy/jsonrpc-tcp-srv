@@ -6,8 +6,12 @@
 #else
 #include "ADXmppProxy.hpp"
 #endif
+#include "XmLog.h"
+#include <atomic>
 #include <deque>
 #include <iostream>
+#include <mutex>
+#include <time.h>
 #include <vector>
 #ifdef USE_AI_BOT
 #define CPPHTTPLIB_NO_SSL
@@ -19,7 +23,15 @@
 #include "ADTimer.hpp"
 
 using namespace std;
-#define CLIENT_ALIVE_PING_DURATION_MS 90000; // 90seconds
+#define CLIENT_ALIVE_PING_DURATION_MS 90000; // 90seconds (default pinginterval)
+// connection and queue tuning defaults (override via login file keys)
+#define XMPP_DEFAULT_PING_INTERVAL_SEC 90
+#define XMPP_DEFAULT_PING_MISSES 3
+#define XMPP_DEFAULT_RECONNECT_MIN_SEC 2
+#define XMPP_DEFAULT_RECONNECT_MAX_SEC 60
+#define XMPP_DEFAULT_ASYNC_TIMEOUT_SEC 300
+#define XMPP_MAX_PENDING_CMDS 64 // bounded command queue (P1)
+#define XMPP_MAX_SLEEP_SEC 30    // cap for the sleep command (P1)
 #define GITHUB_FMW_DOWNLOAD_FOLDER                                             \
   "http://github.com/hackboxguy/downloads/raw/master/"
 // #define BRBOX_SYS_CONFIG_FILE_PATH "/boot/sysconfig.txt"
@@ -94,13 +106,14 @@ typedef enum EXMPP_CMD_TYPES_T {
 struct XmppCmdEntry {
   std::string cmdMsg;
   std::string sender;
+  bool aiPrompt; // forward to the AI agent instead of the command table
 
 public:
-  XmppCmdEntry(std::string msg, std::string from) : cmdMsg(msg), sender(from) {}
+  XmppCmdEntry(std::string msg, std::string from, bool ai = false)
+      : cmdMsg(msg), sender(from), aiPrompt(ai) {}
 };
 /* ------------------------------------------------------------------------- */
-#define EXMPP_EVNT_TYPES_TABL                                                  \
-  { "gsm", "gpio", "unknown", "none", "\0" }
+#define EXMPP_EVNT_TYPES_TABL {"gsm", "gpio", "unknown", "none", "\0"}
 typedef enum EXMPP_EVNT_TYPES_T {
   EXMPP_EVNT_GSM = 0,
   EXMPP_EVNT_GPIO,
@@ -113,9 +126,11 @@ struct AyncEventEntry {
   int srvPort;    // port where async command was sent
   int xmppTID;    // internal global task id of xmpp-proxy
   std::string to; // reply back to this requestor
+  time_t created; // for the timeout sweep
 public:
   AyncEventEntry(int tid, int port, int xmtid, std::string sender)
-      : taskID(tid), srvPort(port), xmppTID(xmtid), to(sender) {}
+      : taskID(tid), srvPort(port), xmppTID(xmtid), to(sender),
+        created(time(NULL)) {}
 };
 // following functor object is used as predicator for finding a specific vector
 // element entry based on srvToken
@@ -198,8 +213,20 @@ class XmppMgr : public ADXmppConsumer,
   int XmppTaskIDCounter;
   int heartbeat_ms;
   int event_period_ms; //
-  int CyclicTime_ms;   // 60sec cycle counter
+  int CyclicTime_ms;   // keepalive ping period
+  int sweep_period_ms; // async-task timeout sweep accumulator
   int LastFmwUpdateTaskID;
+  // connection tuning (login file keys pinginterval, pingmisses,
+  // reconnectmin, reconnectmax, asynctimeout)
+  int PingIntervalSec;
+  int PingMisses;
+  int ReconnectMinSec;
+  int ReconnectMaxSec;
+  int AsyncTimeoutSec;
+  std::mutex cmdMutex;   // processCmd
+  std::mutex inboxMutex; // Inbox, ResponseMsg
+  std::mutex asyncMutex; // AsyncTaskList
+  void sweep_async_tasks();
 
   ADTimer *pMyTimer;
   bool DebugLog;
@@ -222,8 +249,10 @@ class XmppMgr : public ADXmppConsumer,
   std::string XmppBoshUrl;
   std::string XmppBoshHost;
   bool XmppTlsVerify;
-  bool XmppTlsEnabled;  // Controls XMPP-level TLS (STARTTLS) - disable for HTTP BOSH with external TLS proxy
-  std::string XmppSaslMech; // SASL mechanism: "scram-sha-1" or empty for default
+  bool XmppTlsEnabled; // Controls XMPP-level TLS (STARTTLS) - disable for HTTP
+                       // BOSH with external TLS proxy
+  std::string
+      XmppSaslMech; // SASL mechanism: "scram-sha-1" or empty for default
 #ifdef USE_CXMPP_LIB
   CXmppProxy XmppProxy; // xmpp client
 #else

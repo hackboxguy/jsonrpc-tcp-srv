@@ -168,6 +168,29 @@ onXmppMessage() → ResolveCmdStr() → proc_cmd_*() → send_reply()
 
 **Location:** [lib/lib-jsonrpc-tcp/](lib/lib-jsonrpc-tcp/)
 
+### Threading model (since the m2m-extension branch, bucket 1)
+
+- The XMPP session thread owns the gloox `Client`. In TCP mode it polls
+  `recv()` every 100 ms and drains an outbound queue between polls, so every
+  gloox call happens on that thread. Other threads only enqueue messages,
+  pings and roster operations through `ADXmppProxy`, or read a mutex-guarded
+  roster mirror.
+- BOSH mode keeps the blocking `recv()` (timed receive exceeds the BOSH
+  request limit); queued items are then sent by the calling thread under
+  `clientMutex`. This is the documented BOSH limitation.
+- `XmppMgr` queues (commands, inbox, async task list) are mutex protected;
+  the command queue is bounded (64) and answers `return=Busy` when full.
+  AI prompts run on the worker thread, never on the session thread.
+- Reconnect uses exponential backoff with jitter (`reconnectmin` to
+  `reconnectmax`), keepalive pings are configurable (`pinginterval`,
+  `pingmisses`), async commands expire after `asynctimeout`.
+- `lib/lib-jsonrpc-tcp`: the event manager, event notifier and event
+  receiver list are mutex protected; all `new[]`/`new`/json-c allocations are
+  released with the matching deallocator. Both daemons pass AddressSanitizer
+  and ThreadSanitizer stress runs (`services/xmproxy/tests/stress-scenario.sh`).
+- gloox must be built with OpenSSL for real servers; GnuTLS builds fail SASL
+  against Snikket. See `services/xmproxy/docs/dev-setup.md`.
+
 ## Data Flow
 
 ### Incoming XMPP Message Flow
@@ -227,7 +250,15 @@ xmproxysrv [OPTIONS]
   --netif=<interface>        # Network interface (eth0, wlan0)
   --aiurl=<url>              # AI agent URL
   --aimodel=<model>          # AI model name
+  --loglevel=<level>         # error|warn|info|debug (default info)
 ```
+
+Optional login-file keys: `pinginterval`, `pingmisses`, `reconnectmin`,
+`reconnectmax`, `asynctimeout` (see `services/xmproxy/srv/xmpp-login.txt`).
+
+Tests and the local XMPP rig: `services/xmproxy/tests/run-tests.sh`, documented
+in `services/xmproxy/docs/dev-setup.md`. Product requirements and the bucket
+plan: `services/xmproxy/docs/prd.md`, `services/xmproxy/docs/plan.md`.
 
 **Location:** [services/xmproxy/srv/src/MyCmdline.cpp](services/xmproxy/srv/src/MyCmdline.cpp)
 

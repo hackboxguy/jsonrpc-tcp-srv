@@ -12,6 +12,7 @@ typedef enum XMPROXY_CMDLINE_OPT_T {
   XMPROXY_CMDLINE_OPT_AIAGENT,      // aiagent
   XMPROXY_CMDLINE_OPT_AIMODEL,      // aimodel
   XMPROXY_CMDLINE_OPT_SYSCFG,       // system-type
+  XMPROXY_CMDLINE_OPT_LOGLEVEL,     // error|warn|info|debug
   XMPROXY_CMDLINE_OPT_UNKNOWN,
   XMPROXY_CMDLINE_OPT_NONE
 } XMPROXY_CMDLINE_OPT;
@@ -24,6 +25,7 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
   AiAgentUrl = "";
   AiModel = "";
   SystemConfig = "";
+  LogLevel = "";
   port_number = portnum;
   strcpy(version_number, version_str);
   CmdlineHelper.attach_helper(this);
@@ -71,6 +73,11 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
   CmdlineHelper.insert_help_entry(
       (char *)"--syscfg=sys_config_str    (specify system type "
               "ex:a5v11-xmpp/a5v11-base/3020f-base/docker)");
+  CmdlineHelper.insert_options_entry((char *)"loglevel", optional_argument,
+                                     XMPROXY_CMDLINE_OPT_LOGLEVEL);
+  CmdlineHelper.insert_help_entry((
+      char *)"--loglevel=level           (error|warn|info|debug, default info; "
+             "--debuglog implies debug)");
   strcpy(LoginFilePath, XMPROXY_DEFAULT_LOGIN_FILE_PATH);
   UsbGSMSts = false;
   AliasListFilePath[0] = '\0';
@@ -159,6 +166,12 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
       SystemConfig = "none";
     else
       SystemConfig = sub_arg;
+    break;
+  case XMPROXY_CMDLINE_OPT_LOGLEVEL:
+    if (CmdlineHelper.get_next_subargument(&sub_arg) == 0)
+      LogLevel = "";
+    else
+      LogLevel = sub_arg;
     break;
   default:
     return 0;
@@ -249,6 +262,7 @@ std::string MyCmdline::get_ai_agent_url() { return AiAgentUrl; }
 std::string MyCmdline::get_ai_model() { return AiModel; }
 /*****************************************************************************/
 std::string MyCmdline::get_sys_config() { return SystemConfig; }
+std::string MyCmdline::get_log_level() { return LogLevel; }
 ADCMN_SYSCFG_TYPE MyCmdline::get_sys_config_enum() {
   const char *table[] = ADCMN_SYSCFG_TYPE_TABLE;
   int result;

@@ -8,8 +8,15 @@ ADEvntNotifier::ADEvntNotifier() {
 ADEvntNotifier::~ADEvntNotifier() { NotifierThread.stop_thread(); }
 int ADEvntNotifier::monoshot_callback_function(void *pUserData,
                                                ADThreadProducer *pObj) {
-  while (!NotifierList.empty()) {
-    EvntNotifyEntry entry = NotifierList.front();
+  while (true) {
+    EvntNotifyEntry entry(0, 0, 0, 0);
+    {
+      std::lock_guard<std::mutex> lock(listMutex);
+      if (NotifierList.empty())
+        break;
+      entry = NotifierList.front();
+      NotifierList.pop_front();
+    }
     ADJsonRpcClient Client;
     if (Client.rpc_server_connect("127.0.0.1", entry.port) != 0) {
       LOG_ERR_MSG_WITH_ARG("libadav:ADEvntNotifier",
@@ -28,13 +35,16 @@ int ADEvntNotifier::monoshot_callback_function(void *pUserData,
       }
       Client.rpc_server_disconnect();
     }
-    NotifierList.pop_front();
   }
   return 0;
 }
 int ADEvntNotifier::NotifyEvent(int eventNum, int eventArg, int port,
                                 int eventArg2) {
-  NotifierList.push_back(EvntNotifyEntry(eventNum, eventArg, port, eventArg2));
+  {
+    std::lock_guard<std::mutex> lock(listMutex);
+    NotifierList.push_back(
+        EvntNotifyEntry(eventNum, eventArg, port, eventArg2));
+  }
   NotifierThread.wakeup_thread();
   return 0;
 }

@@ -19,6 +19,9 @@ int ADEvntMgr::monoshot_callback_function(void *pUserData,
                                           ADThreadProducer *pObj) {
   int call_from = pObj->getID();
   if (call_from == notifyThreadID) {
+    // lock held while sending: eventList must not change underneath, and the
+    // sends go to local subscribers with a bounded connect timeout
+    std::lock_guard<std::mutex> lock(evntMutex);
     while (!notifyEvent.empty()) {
       EventProcEntry entry = notifyEvent.front();
       for (int i = 0; i < eventList.size(); ++i) {
@@ -38,16 +41,24 @@ int ADEvntMgr::monoshot_callback_function(void *pUserData,
       notifyEvent.pop_front();
     }
   } else {
-    while (!processEvent.empty()) {
-      EventProcEntry entry = processEvent.front();
+    while (true) {
+      EventProcEntry entry(0, 0, 0, 0);
+      {
+        std::lock_guard<std::mutex> lock(evntMutex);
+        if (processEvent.empty())
+          break;
+        entry = processEvent.front();
+        processEvent.pop_front();
+      }
+      // subscribers run application code: call them without the lock
       notify_subscribers(entry.cltToken, entry.eventNum, entry.eventArg,
                          entry.eventArg2);
-      processEvent.pop_front();
     }
   }
   return 0;
 }
 int ADEvntMgr::register_event_subscription(EventEntry *pEvent, int *ack_token) {
+  std::lock_guard<std::mutex> lock(evntMutex);
   if (find_if(eventList.begin(), eventList.end(), FindDuplicateEntry(pEvent)) ==
       eventList.end()) {
     pEvent->srvToken = *ack_token = ++AckToken;
@@ -60,6 +71,7 @@ int ADEvntMgr::register_event_subscription(EventEntry *pEvent, int *ack_token) {
     return -1;
 }
 int ADEvntMgr::unregister_event_subscription(int srv_token) {
+  std::lock_guard<std::mutex> lock(evntMutex);
   if (find_if(eventList.begin(), eventList.end(), FindEventEntry(srv_token)) ==
       eventList.end())
     return -1;
@@ -70,7 +82,10 @@ int ADEvntMgr::unregister_event_subscription(int srv_token) {
   return 0;
 }
 int ADEvntMgr::notify_event(int eventNum, int eventArg, int eventArg2) {
-  notifyEvent.push_back(EventProcEntry(eventNum, eventArg, 0, eventArg2));
+  {
+    std::lock_guard<std::mutex> lock(evntMutex);
+    notifyEvent.push_back(EventProcEntry(eventNum, eventArg, 0, eventArg2));
+  }
   EventNotifyThread.wakeup_thread();
   return 0;
 }
@@ -89,8 +104,11 @@ int ADEvntMgr::send_event(EventEntry *pEvent, int event_num, int event_arg,
 }
 int ADEvntMgr::process_event(int event_num, int event_arg, int clt_token,
                              int event_arg2) {
-  processEvent.push_back(
-      EventProcEntry(event_num, event_arg, clt_token, event_arg2));
+  {
+    std::lock_guard<std::mutex> lock(evntMutex);
+    processEvent.push_back(
+        EventProcEntry(event_num, event_arg, clt_token, event_arg2));
+  }
   EventProcessThread.wakeup_thread();
   return 0;
 }

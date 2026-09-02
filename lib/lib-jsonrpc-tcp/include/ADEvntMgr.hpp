@@ -3,6 +3,7 @@
 #include "ADThread.hpp"
 #include <deque>
 #include <iostream>
+#include <mutex>
 #include <vector>
 using namespace std;
 typedef struct EventEntry_t {
@@ -92,7 +93,7 @@ class ADEvntMgrConsumer {
 public:
   virtual int receive_events(int cltToken, int evntNum, int evntArg,
                              int evntArg2) = 0;
-  virtual ~ADEvntMgrConsumer(){};
+  virtual ~ADEvntMgrConsumer() {};
 };
 class ADEvntMgrProducer {
   std::vector<ADEvntMgrConsumer *> subscribers;
@@ -106,12 +107,15 @@ protected:
   }
 
 public:
-  virtual ~ADEvntMgrProducer(){};
+  virtual ~ADEvntMgrProducer() {};
   void AttachReceiver(ADEvntMgrConsumer *pConsumer) {
     subscribers.push_back(pConsumer);
   }
 };
 class ADEvntMgr : public ADEvntMgrProducer, public ADThreadConsumer {
+  // guards eventList, notifyEvent and processEvent: they are filled from the
+  // RPC threads and drained by the two worker threads below
+  std::mutex evntMutex;
   int AckToken;
   int notifyThreadID;
   int processThreadID;

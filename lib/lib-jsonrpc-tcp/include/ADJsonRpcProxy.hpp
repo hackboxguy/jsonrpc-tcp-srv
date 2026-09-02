@@ -4,6 +4,7 @@
 #include "ADJsonChecker.hpp"
 #include "ADNetServer.hpp"
 #include "JsonCmnDef.h"
+#include <atomic>
 #include <iostream>
 #include <string>
 #include <typeinfo>
@@ -39,7 +40,7 @@ class ADJsonRpcProducer;
 class ADJsonRpcConsumer {
 public:
   virtual int rpc_call_notification(api_task_obj *pReqRespObj) = 0;
-  virtual ~ADJsonRpcConsumer(){};
+  virtual ~ADJsonRpcConsumer() {};
 };
 struct ADJsonRpcCommand {
   ADJsonRpcConsumer *pParent;
@@ -48,8 +49,8 @@ struct ADJsonRpcCommand {
   ADJsonRpcProducer *pProducer;
 
 public:
-  ADJsonRpcCommand(){};
-  ~ADJsonRpcCommand(){};
+  ADJsonRpcCommand() {};
+  ~ADJsonRpcCommand() {};
 };
 class ADJsonRpcProducer {
   std::vector<ADJsonRpcCommand *> rpc_call_list;
@@ -103,8 +104,8 @@ struct api_task_obj {
   char custom_result_string[JSON_RPC_METHOD_RESP_MAX_LENGTH];
 
 public:
-  api_task_obj(){};
-  ~api_task_obj(){};
+  api_task_obj() {};
+  ~api_task_obj() {};
 };
 class ADJsonRpcProxy : public ADJsonRpcProducer,
                        public ADNetConsumer,
@@ -112,8 +113,9 @@ class ADJsonRpcProxy : public ADJsonRpcProducer,
                        public ADThreadConsumer {
   char request_timestamp[255];
   int socketlog;
-  int total_req_received;
-  int total_res_sent;
+  std::atomic<int>
+      total_req_received; // touched by the net and response threads
+  std::atomic<int> total_res_sent;
   ADNetServer ServerSocket;
   ADGenericChain ReqRespChain;
   int ReqRespChainID;

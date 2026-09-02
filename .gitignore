@@ -5,5 +5,10 @@ build/
 # xmproxy test rig, runtime state and virtualenv (development only)
 services/xmproxy/tests/.venv/
 services/xmproxy/tests/.run/
+services/xmproxy/tests/.run-*/
+services/xmproxy/tests/.run-*.log
+Output-*/
 __pycache__/
 *.pyc
+# local secrets for manual tests against real servers
+services/xmproxy/tests/local/

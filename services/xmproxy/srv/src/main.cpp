@@ -3,6 +3,7 @@
 #include "EvntHandler.h"
 #include "MyCmdline.h"
 #include "SrcControlVersion.h"
+#include "XmLog.h"
 #include "XmppMgr.h" //ADXmppProxy.hpp"
 #include "XmppRpc.h"
 #include "XmproxyJsonDef.h"
@@ -30,6 +31,14 @@ int main(int argc, const char *argv[]) {
 
   bool dbglog = CmdLine.get_debug_log();
   bool emulat = CmdLine.get_emulation_mode();
+  if (dbglog)
+    xmlog_set_level(XMLOG_DEBUG);
+  if (CmdLine.get_log_level() != "" &&
+      xmlog_set_level_by_name(CmdLine.get_log_level().c_str()) != 0)
+    XMLOG_WRN("unknown --loglevel '%s', keeping default",
+              CmdLine.get_log_level().c_str());
+  XMLOG_INF("xmproxysrv version %s starting (rpc port %d)", ver,
+            CmdLine.get_port_number());
 
   // start 100ms timer
   ADTimer AppTimer(
@@ -65,6 +74,10 @@ int main(int argc, const char *argv[]) {
       CmdLine.get_updateurl_filepath());                // updateurl filepath
   XmpManager.SetAiAgentUrl(CmdLine.get_ai_agent_url()); // ai-agent-url
   XmpManager.SetAiModel(CmdLine.get_ai_model());        // ai-model
+  // event receiver is declared before the RPC manager on purpose: it is
+  // then destroyed after the manager's threads have stopped, so no event
+  // can arrive at a destroyed object during shutdown
+  EvntHandler EvntReceiver("dummy_rpc", 0, emulat, dbglog, &DataCache);
   // attach rpc classes to ADJsonRpcMgr
   ADJsonRpcMgr RpcMgr(SRC_CONTROL_VERSION, dbglog, &DevInfo); // main rpc
                                                               // handler
@@ -142,16 +155,18 @@ int main(int argc, const char *argv[]) {
   /********Prepare event receiver to receive events from different
    * services******/
   // TODO: wait for different services ready flag before subscribing for events
-  EvntHandler EvntReceiver("dummy_rpc", 0, emulat, dbglog, &DataCache);
   RpcMgr.AttachEventReceiver(&EvntReceiver);
+  EvntReceiver.AttachHeartBeat(
+      &AppTimer); // subscribe now, re-subscribe periodically (F2)
 
   // server is ready to serve rpc's
   RpcMgr.SetServiceReadyFlag(EJSON_RPCGMGR_READY_STATE_READY);
   // wait for sigkill or sigterm signal
   AppTimer.wait_for_exit_signal(); // loop till KILL or TERM signal is received
-  XmpManager.Stop();               // disconnect the xmpp server
-  AppTimer.stop_timer();           // stop sending heart-beats to other objects
-  // XmpManager.Stop();//disconnect the xmpp server
+  XMLOG_INF("exit signal received, shutting down");
+  XmpManager.Stop();     // disconnect the xmpp server
+  AppTimer.stop_timer(); // stop sending heart-beats to other objects
+  XMLOG_INF("xmproxysrv stopped");
   return 0;
 }
 bool openwrt_system(ADCMN_BOARD_TYPE BoardType) {

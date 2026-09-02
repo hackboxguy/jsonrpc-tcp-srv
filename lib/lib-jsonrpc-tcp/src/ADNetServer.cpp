@@ -27,7 +27,7 @@ int ADNetServer::double_identify_chain_element(void *element, int ident1,
 int ADNetServer::free_chain_element_data(void *element, ADChainProducer *pObj) {
   net_data_obj *obj;
   obj = (net_data_obj *)element;
-  OBJ_MEM_DELETE(obj->data_buffer);
+  ARRAY_MEM_DELETE(obj->data_buffer);
   return 0;
 }
 bool ADNetServer::IsConnectionAlive(int sock_descriptor) {
@@ -50,7 +50,7 @@ int ADNetServer::monoshot_callback_function(void *pUserData,
       if (IsConnectionAlive(resp_obj->sock_descriptor))
         send(resp_obj->sock_descriptor, resp_obj->data_buffer,
              resp_obj->data_buffer_len, MSG_DONTWAIT | MSG_NOSIGNAL);
-      OBJ_MEM_DELETE(resp_obj->data_buffer);
+      ARRAY_MEM_DELETE(resp_obj->data_buffer);
       OBJ_MEM_DELETE(resp_obj);
     }
   }
@@ -324,7 +324,7 @@ int ADNetServer::schedule_response(int socket_descriptor, char *buf, int len) {
   strcpy(resp_obj->data_buffer, buf);
   if (response_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push response object to chain!\n");
-    OBJ_MEM_DELETE(resp_obj->data_buffer);
+    ARRAY_MEM_DELETE(resp_obj->data_buffer);
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }
@@ -357,7 +357,7 @@ int ADNetServer::binary_receive_data_and_notify_consumer(int socket_descriptor,
   strcpy(resp_obj->data_buffer, buf);
   if (request_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push response object to chain!\n");
-    OBJ_MEM_DELETE(resp_obj->data_buffer);
+    ARRAY_MEM_DELETE(resp_obj->data_buffer);
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }
@@ -397,7 +397,7 @@ int ADNetServer::json_receive_data_and_notify_consumer(int socket_descriptor,
       pTemp = &buf[i + 1];
       if (request_chain.chain_put((void *)resp_obj) != 0) {
         printf("failed! unable to push response object to chain!\n");
-        OBJ_MEM_DELETE(resp_obj->data_buffer);
+        ARRAY_MEM_DELETE(resp_obj->data_buffer);
         OBJ_MEM_DELETE(resp_obj);
         return -1;
       }
@@ -423,7 +423,7 @@ int ADNetServer::json_receive_data_and_notify_consumer(int socket_descriptor,
   strncpy(resp_obj->data_buffer, pTemp, (len - last_index) + 1);
   if (request_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push response object to chain!\n");
-    OBJ_MEM_DELETE(resp_obj->data_buffer);
+    ARRAY_MEM_DELETE(resp_obj->data_buffer);
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }

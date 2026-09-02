@@ -3,6 +3,7 @@
 #include "ADThread.hpp"
 #include <deque>
 #include <iostream>
+#include <mutex>
 #include <vector>
 using namespace std;
 struct EvntNotifyEntry {
@@ -17,6 +18,8 @@ public:
         eventArg2(event_arg2) {}
 };
 class ADEvntNotifier : public ADThreadConsumer {
+  std::mutex
+      listMutex; // NotifierList is filled by callers, drained by NotifierThread
   std::deque<EvntNotifyEntry> NotifierList;
   ADThread NotifierThread;
   virtual int monoshot_callback_function(void *pUserData,

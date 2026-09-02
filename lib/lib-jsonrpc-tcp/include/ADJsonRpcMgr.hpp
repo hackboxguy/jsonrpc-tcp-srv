@@ -8,7 +8,9 @@
 #include "ADTaskWorker.hpp"
 #include "ADTimer.hpp"
 #include "JsonCmnDef.h"
+#include <atomic>
 #include <iostream>
+#include <mutex>
 #include <stdint.h>
 #include <string>
 #include <typeinfo>
@@ -67,7 +69,7 @@ typedef struct RPCMGR_SETTINGS_STS_PACKET_T {
 #define RPCMGR_RPC_READY_STS_GET "get_ready_status"
 #define RPCMGR_RPC_READY_STS_ARGSTS "status"
 #define RPCMGR_RPC_READY_STS_ARGSTS_TBL                                        \
-  { "notready", "ready", "busy", "unknown", "none", "\0" }
+  {"notready", "ready", "busy", "unknown", "none", "\0"}
 typedef enum EJSON_RPCGMGR_READY_STATE_T {
   EJSON_RPCGMGR_READY_STATE_NOT_READY,
   EJSON_RPCGMGR_READY_STATE_READY,
@@ -83,7 +85,7 @@ typedef struct RPCMGR_READY_STS_PACKET_T {
 #define RPCMGR_RPC_DEBUG_LOG_SET "set_debug_logging"
 #define RPCMGR_RPC_DEBUG_LOG_ARGSTS "status"
 #define RPCMGR_RPC_DEBUG_LOG_ARGSTS_TBL                                        \
-  { "disable", "enable", "unknown", "none", "\0" }
+  {"disable", "enable", "unknown", "none", "\0"}
 typedef enum EJSON_RPCGMGR_FLAG_STATE_T {
   EJSON_RPCGMGR_FLAG_STATE_DISABLE,
   EJSON_RPCGMGR_FLAG_STATE_ENABLE,
@@ -118,10 +120,10 @@ typedef struct RPCMGR_EVENT_PACKET_T {
 #define RPCMGR_RPC_DEVOP_STATE_SET "set_devop_state"
 #define RPCMGR_RPC_DEVOP_STATE_ARGSTS "status"
 #define RPCMGR_RPC_DEVOP_STATE_ARGSTS_TBL                                      \
-  {                                                                            \
-    "idle", "on", "laststate", "off", "reboot", "booting", "rebooting",        \
-        "switchingoff", "boot", "idlenoexthw", "unknown", "none", "\0"         \
-  }
+  {"idle",   "on",          "laststate", "off",                                \
+   "reboot", "booting",     "rebooting", "switchingoff",                       \
+   "boot",   "idlenoexthw", "unknown",   "none",                               \
+   "\0"}
 typedef enum EJSON_RPCGMGR_DEVOP_STATE_T {
   EJSON_RPCGMGR_DEVOP_STATE_IDLE,
   EJSON_RPCGMGR_DEVOP_STATE_ON,
@@ -192,7 +194,7 @@ public:
     logmsg = log;
     cmnrpchandler = cmnhandler;
   };
-  virtual ~ADJsonRpcMgrConsumer(){};
+  virtual ~ADJsonRpcMgrConsumer() {};
   virtual int MapJsonToBinary(JsonDataCommObj *pReq, int index) = 0;
   virtual int MapBinaryToJson(JsonDataCommObj *pReq, int index) = 0;
   virtual int ProcessWork(JsonDataCommObj *pReq, int index,
@@ -205,14 +207,21 @@ public:
 class ADJsonRpcMgrProducer {
   std::vector<ADJsonRpcMgrConsumer *> rpclist;
   std::vector<ADJsonRpcMgrConsumer *> eventReceiver;
+  std::mutex eventReceiverMutex; // receivers attach after Start(), events
+                                 // arrive on worker threads
 
 protected:
   ADTaskWorker AsyncTaskWorker;
   ADEvntMgr EventMgr;
   void notify_event_receivers(int cltToken, int evntNum, int evntArg,
                               int evntArg2) {
+    std::vector<ADJsonRpcMgrConsumer *> receivers;
+    {
+      std::lock_guard<std::mutex> lock(eventReceiverMutex);
+      receivers = eventReceiver;
+    }
     std::vector<ADJsonRpcMgrConsumer *>::iterator iter;
-    for (iter = eventReceiver.begin(); iter != eventReceiver.end(); ++iter)
+    for (iter = receivers.begin(); iter != receivers.end(); ++iter)
       (*iter)->ReceiveEvent(cltToken, evntNum, evntArg, evntArg2);
   }
   ADJsonRpcMgrConsumer *getRpcHandler(std::string rpcName) {
@@ -252,9 +261,10 @@ protected:
   }
 
 public:
-  virtual ~ADJsonRpcMgrProducer(){};
+  virtual ~ADJsonRpcMgrProducer() {};
   void AttachRpc(ADJsonRpcMgrConsumer *pRpc) { rpclist.push_back(pRpc); }
   void AttachEventReceiver(ADJsonRpcMgrConsumer *pReceiver) {
+    std::lock_guard<std::mutex> lock(eventReceiverMutex);
     eventReceiver.push_back(pReceiver);
   }
   int get_total_attached_rpcs() { return rpclist.size(); }
@@ -346,7 +356,8 @@ class ADJsonRpcMgr : public ADJsonRpcMgrProducer,
   int svnVersion;
   ADCMN_DEV_INFO *pDevInfo;
   bool shutdown_support;
-  EJSON_RPCGMGR_READY_STATE ServiceReadyFlag;
+  std::atomic<EJSON_RPCGMGR_READY_STATE>
+      ServiceReadyFlag; // read by RPC thread, set by main
   bool ServiceDebugFlag;
   EJSON_RPCGMGR_DEVOP_STATE ServiceOpState;
   virtual int process_json_to_binary(JsonDataCommObj *pReq);

@@ -79,6 +79,10 @@ Scope
 - Stress test in the rig: 1000 rapid commands from two senders while the rig
   cuts the network several times.
 
+- P1 (scheduled): bounded command queue with a Busy reply when full, AI
+  prompts moved off the XMPP receive thread, sleep capped at 30 s, async
+  commands time out with a Timeout reply when the completion never arrives.
+
 Acceptance
 - Stress test passes with no lost or duplicated replies.
 - Golden chat regression unchanged.
@@ -87,6 +91,14 @@ Acceptance
 Decisions to verify at checkpoint
 - BOSH mode keeps its blocking receive with locked sends, documented as a
   known limitation; TCP mode uses timed receive with an outbound queue.
+- Defaults: keepalive ping every 90 s, 3 misses; reconnect 2 s doubling to
+  60 s plus jitter; async timeout 300 s; queue depth 64; sleep cap 30 s.
+- Raspberry Pi install (bucket 8) must build gloox from source with OpenSSL,
+  because distribution packages link GnuTLS and cannot authenticate against
+  Snikket (finding F5).
+
+Status: done 2026-09-02 on branch `m2m-extension`. See the checkpoint
+summary in the commit message and findings F5 to F7 below.
 
 ## Bucket 2 — Fallback account
 
@@ -211,10 +223,10 @@ Raised at the bucket 0 checkpoint. Each names the bucket it would join.
 
 | Id | Proposal | Would join |
 |---|---|---|
-| P1 | Per-command execution timeout and a bounded command queue, so one hung command cannot block every other sender. | bucket 1 |
+| P1 | Per-command execution timeout and a bounded command queue, so one hung command cannot block every other sender. | bucket 1 (scheduled 2026-09-02) |
 | P2 | Admin `status` chat command and `describe` fields: connection state, active account (primary or fallback), uptime, queue depth, last error. | bucket 1 and 2 |
-| P3 | Duplicate suppression in the JSON path: remember (sender, request id) for a short window so a stanza resent by the server after a reconnect does not run a control twice. | bucket 4 |
-| P4 | `system.heartbeat` topic at a slow interval so the app can show "device alive" and detect a silent death. | bucket 6 |
+| P3 | Duplicate suppression in the JSON path: remember (sender, request id) for a short window so a stanza resent by the server after a reconnect does not run a control twice. | bucket 4 (scheduled 2026-09-02) |
+| P4 | `system.heartbeat` topic at a slow interval so the app can show "device alive" and detect a silent death. | bucket 6 (scheduled 2026-09-02) |
 | P5 | `xmproxysrv --check-config` that validates login, ACL and manifest files and exits, for use before `systemctl restart`. | bucket 5 |
 | P6 | Warn loudly when the login file is world readable or `tlsverify: false` is set. | bucket 8 |
 | P7 | Run the rig against the Snikket server image instead of Prosody 0.11.9 once the server wrapper work starts, for fidelity with the real deployment. | bucket 8 |
@@ -230,6 +242,11 @@ Problems discovered while building the rig, with the bucket that owns them.
 | F2 | bucket 0 | xmproxysrv subscribes to sysmgr/gpio/sms events once at startup. If the peer restarts, completions of async commands (identify, shellcmd) never arrive and the chat reply stays at InProgress. Restarting xmproxysrv fixes it, so re-subscription is missing. | bucket 1 |
 | F3 | bucket 0 | An unknown JID gets no reply at all, not even a denial. Fine for humans, but an app needs an explicit error to show. | bucket 3 |
 | F4 | bucket 0 | `utils/tests/xmproxy-test/requests.txt` contained sysmgr requests; replaced with real xmproxy RPCs. | fixed in bucket 0 |
+| F1 root cause | bucket 1 | The event manager in `lib/lib-jsonrpc-tcp` pushed and popped two std::deque queues and a subscriber vector from different threads with no lock; the same library also freed `new[]` buffers with `free`/`delete`, released a json-c child object twice (assertion under json-c 0.19) and read a ready flag unsynchronized. All fixed; ASan and TSan stress runs are clean. | fixed in bucket 1 |
+| F2 | bucket 1 | Event subscriptions are now re-attempted every 30 s; a restarted peer is re-subscribed and async completions resume (verified by `test_resilience.py`). | fixed in bucket 1 |
+| F5 | bucket 1 | gloox 1.0.28 linked against GnuTLS (Arch, Debian and Raspberry Pi OS packages) cannot authenticate against Snikket: SCRAM-SHA-1-PLUS proposes a channel-binding type the server rejects and plain SCRAM-SHA-1 is refused as malformed. The same daemon linked against an OpenSSL-built gloox authenticates in 0.5 s. The Docker image already builds gloox with OpenSSL; the Pi install must do the same. | bucket 8 |
+| F6 | bucket 1 | Under AddressSanitizer the GnuTLS-linked gloox crashes in `gnutls_x509_trust_list_deinit` during disconnect on a plaintext session. Not reproduced with the OpenSSL build, which is the supported configuration; noted for anyone running the sanitizer rig. | documented |
+| F7 | bucket 1 | Shutdown ordering: the event receiver was destroyed before the RPC manager's threads stopped. `main.cpp` now declares it first and subscribes only once the RPC server listens. | fixed in bucket 1 |
 
 ## Checkpoint template
 
