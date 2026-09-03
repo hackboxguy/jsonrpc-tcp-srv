@@ -318,6 +318,22 @@ Decisions taken so far
   runs as the `xmproxy` user, sysmgr as root (it executes admin shell
   commands and reboots). Logs go to journald.
 
+Progress (2026-09-03)
+- Docker image rebuilt from the branch (31 MB, gloox with OpenSSL); the repo
+  gained `.dockerignore` and a git-less version fallback so the image builds
+  from a clean context.
+- Soak started 2026-09-03 10:12 UTC against the owner's Snikket server: the
+  container polls three indicators (one through `shellcmd`, every 10 s),
+  publishes a heartbeat every 60 s, and the host-side client probes `exec
+  account` every minute; the chaos script cuts the container's network for
+  90 s every 4 h. `tests/local/soak/report.py` summarizes at any time.
+- `deploy/`: `build-from-source.sh` (gloox with OpenSSL, digest pinned),
+  `install-pi.sh`, systemd units, `xmproxy.env`, `sysusers-xmproxy.conf`,
+  `xmproxy-seed.sh` + `xmproxy-seed.service`.
+- `misc-tools` branch `xmproxy-package`: hook, board config, skeleton,
+  assertions, persistence and capability rows; a real image build was
+  started to measure the size limits.
+
 Acceptance
 - S1, S2 and S3 measured and recorded in `docs/soak-report.md`.
 

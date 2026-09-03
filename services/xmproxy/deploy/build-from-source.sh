@@ -70,8 +70,10 @@ BUILD="$WORK/build"
 PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
 cmake -S "$SRC" -B "$BUILD" -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_BUILD_TYPE=MinSizeRel \
       -DCMAKE_INSTALL_RPATH="$PREFIX/lib" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
-      -DAUTO_GIT_VERSION=$( [ -d "$SRC/.git" ] && echo ON || echo OFF ) > "$WORK/cmake.log"
-cmake --build "$BUILD" -- install -j"$JOBS" > "$WORK/build.log"
+      -DAUTO_GIT_VERSION=$( [ -d "$SRC/.git" ] && echo ON || echo OFF ) > "$WORK/cmake.log" 2>&1 || {
+    echo "== configure failed:"; tail -40 "$WORK/cmake.log"; exit 1; }
+cmake --build "$BUILD" -- install -j"$JOBS" > "$WORK/build.log" 2>&1 || {
+    echo "== build failed, last lines of $WORK/build.log:"; tail -40 "$WORK/build.log"; exit 1; }
 strip "$PREFIX"/bin/xmproxysrv "$PREFIX"/bin/sysmgr "$PREFIX"/bin/xmproxyclt "$PREFIX"/bin/sysmgrclt "$PREFIX"/bin/tcp-json-rpc-client 2>/dev/null || true
 echo "== installed:"
 ls "$PREFIX/bin"

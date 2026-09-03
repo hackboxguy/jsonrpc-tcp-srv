@@ -98,7 +98,16 @@ endif()
 if(WITH_CXMPP_LIB)
   set(XMPP_LIBRARY strophe)
 else()
-  set(XMPP_LIBRARY gloox)
+  # gloox may live in a private prefix (deploy/build-from-source.sh builds it
+  # with OpenSSL into /opt/xmproxy): take the link directory and library from
+  # pkg-config instead of relying on a system-wide libgloox.
+  include(FindPkgConfig)
+  pkg_check_modules(GLOOX REQUIRED gloox)
+  if(GLOOX_LDFLAGS)
+    set(XMPP_LIBRARY ${GLOOX_LDFLAGS})
+  else()
+    set(XMPP_LIBRARY gloox)
+  endif()
 endif()
 target_link_libraries(${COMPONENT_NAME} PRIVATE
   ${LIB_ADCOMMN}
