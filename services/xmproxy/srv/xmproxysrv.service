@@ -9,8 +9,9 @@ Environment=BRBOX_XMPLOGIN=/home/pi/brbox/output/etc/xmpp-login.txt
 Environment=BRBOX_XMPALIAS=/home/pi/brbox/output/etc/xmpp-alias-list.txt
 Environment=BRBOX_XMPBOTNAME=/home/pi/brbox/output/etc/xmpp-login.txt
 Environment=BRBOX_XMPACL=/home/pi/brbox/output/etc/xmpp-acl.txt
+Environment=BRBOX_XMPMANIFEST=/home/pi/brbox/output/etc/manifest.json
 Environment=BRBOX_BOARD_TYPE=RASPI_BPLUS
-ExecStart=/home/pi/brbox/output/bin/xmproxysrv --boardtype=${BRBOX_BOARD_TYPE} --loginfile=${BRBOX_XMPLOGIN} --aliaslist=${BRBOX_XMPALIAS} --botname=${BRBOX_XMPBOTNAME} --aclfile=${BRBOX_XMPACL} --usbgsm=0
+ExecStart=/home/pi/brbox/output/bin/xmproxysrv --boardtype=${BRBOX_BOARD_TYPE} --loginfile=${BRBOX_XMPLOGIN} --aliaslist=${BRBOX_XMPALIAS} --botname=${BRBOX_XMPBOTNAME} --aclfile=${BRBOX_XMPACL} --manifest=${BRBOX_XMPMANIFEST} --usbgsm=0
 ExecStop=/home/pi/brbox/output/bin/xmproxyclt --shutdown
 
 [Install]

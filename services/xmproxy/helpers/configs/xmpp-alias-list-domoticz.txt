@@ -1,0 +1,12 @@
+# aliases used by manifest-domoticz.json; adjust host and idx values.
+# switching uses shellcmdtrig (no output), reading uses shellcmd whose output
+# the bucket 6 poller collects through shellcmdresp
+domo=http://127.0.0.1:8080/json.htm
+livingon=shellcmdtrig curl -s "$domo?type=command&param=switchlight&idx=12&switchcmd=On"
+livingoff=shellcmdtrig curl -s "$domo?type=command&param=switchlight&idx=12&switchcmd=Off"
+livingstate=shellcmd curl -s "$domo?type=devices&rid=12"
+kitchenon=shellcmdtrig curl -s "$domo?type=command&param=switchlight&idx=13&switchcmd=On"
+kitchenoff=shellcmdtrig curl -s "$domo?type=command&param=switchlight&idx=13&switchcmd=Off"
+livingtemp=shellcmd curl -s "$domo?type=devices&rid=20"
+gateopen=shellcmdtrig curl -s "$domo?type=command&param=switchlight&idx=30&switchcmd=On"
+snapshot=shellcmdtrig /usr/local/bin/snapshot-to-chat.sh

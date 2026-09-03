@@ -15,6 +15,7 @@
 #define XMJSON_ERR_INVALID_PARAMS -32602
 #define XMJSON_ERR_NOT_AUTHORIZED -32001
 #define XMJSON_ERR_BUSY -32002
+#define XMJSON_ERR_NO_MANIFEST -32004
 #define XMJSON_RECENT_WINDOW_S 60
 #define XMJSON_RECENT_MAX 256
 
@@ -225,6 +226,8 @@ static json_object *serve_one(XmppMgr *mgr, json_object *req,
     result = mgr->json_describe(role);
   } else if (method == "list_commands") {
     result = mgr->json_list_commands(role);
+  } else if (method == "get_manifest") {
+    result = mgr->json_get_manifest(role, &error);
   } else if (method == "exec") {
     ExecOutcome o = do_exec(mgr, params, sender, role, idkey);
     result = o.result;
@@ -269,7 +272,11 @@ json_object *XmppMgr::json_describe(XM_ROLE role) {
   const char *names[] = {"ping", "describe", "list_commands", "exec"};
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
     json_object_array_add(methods, json_object_new_string(names[i]));
+  if (manifest_loaded())
+    json_object_array_add(methods, json_object_new_string("get_manifest"));
   json_object_object_add(d, "methods", methods);
+  json_object_object_add(d, "manifest",
+                         json_object_new_boolean(manifest_loaded()));
   json_object_object_add(d, "notifications", json_object_new_array());
   json_object_array_add(json_object_object_get(d, "notifications"),
                         json_object_new_string("task.done"));
@@ -300,11 +307,27 @@ static ExecOutcome do_exec(XmppMgr *mgr, json_object *params,
                            const std::string &reqId) {
   ExecOutcome o = {NULL, NULL};
   json_object *cmdObj = NULL;
+  json_object *ctlObj = NULL;
+  if (params != NULL && json_object_is_type(params, json_type_object) &&
+      json_object_object_get_ex(params, "control", &ctlObj) &&
+      json_object_is_type(ctlObj, json_type_string)) {
+    // exec {"control": id, "arg": "on"|"off"}: a manifest control by id
+    std::string arg;
+    json_object *argObj = NULL;
+    if (json_object_object_get_ex(params, "arg", &argObj) &&
+        json_object_is_type(argObj, json_type_string))
+      arg = json_object_get_string(argObj);
+    o.result = mgr->json_exec_control(json_object_get_string(ctlObj), arg,
+                                      sender, role, reqId, &o.error);
+    return o;
+  }
   if (params == NULL || !json_object_is_type(params, json_type_object) ||
       !json_object_object_get_ex(params, "cmd", &cmdObj) ||
       !json_object_is_type(cmdObj, json_type_string)) {
     o.error = make_error(XMJSON_ERR_INVALID_PARAMS,
-                         "Invalid params: expected {\"cmd\": \"...\"}", NULL);
+                         "Invalid params: expected {\"cmd\": \"...\"} or "
+                         "{\"control\": \"<id>\"}",
+                         NULL);
     return o;
   }
   std::string cmd = json_object_get_string(cmdObj);
@@ -378,6 +401,82 @@ json_object *XmppMgr::json_exec(const std::string &cmd,
                          json_object_new_string(lastText.c_str()));
   if (lastTask >= 0)
     json_object_object_add(result, "task", json_object_new_int(lastTask));
+  json_object_object_add(result, "results", results);
+  return result;
+}
+
+json_object *XmppMgr::json_get_manifest(XM_ROLE role, json_object **error) {
+  json_object *m = Manifest.to_json(role);
+  if (m == NULL) {
+    json_object *data = json_object_new_object();
+    std::string reason = Manifest.get_file().empty()
+                             ? "no manifest file configured"
+                             : Manifest.get_last_error();
+    json_object_object_add(data, "reason",
+                           json_object_new_string(reason.c_str()));
+    *error = make_error(XMJSON_ERR_NO_MANIFEST, "No manifest", data);
+    return NULL;
+  }
+  return m;
+}
+
+json_object *XmppMgr::json_exec_control(const std::string &id,
+                                        const std::string &arg,
+                                        const std::string &sender, XM_ROLE role,
+                                        const std::string &reqId,
+                                        json_object **error) {
+  XmControl control;
+  if (!Manifest.find_control(id, control)) {
+    json_object *data = json_object_new_object();
+    json_object_object_add(data, "control", json_object_new_string(id.c_str()));
+    *error = make_error(XMJSON_ERR_INVALID_PARAMS,
+                        "Invalid params: unknown control", data);
+    return NULL;
+  }
+  CurrentReq.json = true;
+  CurrentReq.reqId = reqId;
+  std::vector<StepResult> steps;
+  std::string err;
+  RPC_SRV_RESULT overall =
+      execute_control(control, arg, sender, role, steps, err);
+  if (steps.empty()) {
+    json_object *data = json_object_new_object();
+    json_object_object_add(data, "control", json_object_new_string(id.c_str()));
+    if (overall == RPC_SRV_RESULT_ACTION_NOT_ALLOWED) {
+      json_object_object_add(
+          data, "requires", json_object_new_string(xm_role_name(control.role)));
+      *error = make_error(XMJSON_ERR_NOT_AUTHORIZED, "Not authorized", data);
+    } else {
+      json_object_object_add(data, "reason",
+                             json_object_new_string(err.c_str()));
+      *error = make_error(XMJSON_ERR_INVALID_PARAMS, "Invalid params", data);
+    }
+    return NULL;
+  }
+  json_object *results = json_object_new_array();
+  for (size_t i = 0; i < steps.size(); i++) {
+    json_object *r = json_object_new_object();
+    json_object_object_add(r, "cmd",
+                           json_object_new_string(steps[i].cmd.c_str()));
+    json_object_object_add(
+        r, "return",
+        json_object_new_string(result_code_name(steps[i].res).c_str()));
+    json_object_object_add(r, "result",
+                           json_object_new_string(steps[i].text.c_str()));
+    if (steps[i].task >= 0)
+      json_object_object_add(r, "task", json_object_new_int(steps[i].task));
+    json_object_array_add(results, r);
+  }
+  json_object *result = json_object_new_object();
+  json_object_object_add(result, "control", json_object_new_string(id.c_str()));
+  json_object_object_add(
+      result, "return",
+      json_object_new_string(result_code_name(overall).c_str()));
+  json_object_object_add(result, "result",
+                         json_object_new_string(steps.back().text.c_str()));
+  if (steps.back().task >= 0)
+    json_object_object_add(result, "task",
+                           json_object_new_int(steps.back().task));
   json_object_object_add(result, "results", results);
   return result;
 }

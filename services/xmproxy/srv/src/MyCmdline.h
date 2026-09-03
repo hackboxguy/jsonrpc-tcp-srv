@@ -19,6 +19,7 @@ class MyCmdline : public ADCmdlineHelperConsumer, public ADCmnStringProcessor {
   std::string SystemConfig;
   std::string LogLevel;
   std::string AclFilePath;
+  std::string ManifestFilePath;
   // Chain-callback functions
   virtual int parse_my_cmdline_options(int arg, char *sub_arg);
   virtual int
@@ -52,6 +53,7 @@ public:
   std::string get_sys_config();
   std::string get_log_level();
   std::string get_acl_filepath();
+  std::string get_manifest_filepath();
   ADCMN_SYSCFG_TYPE get_sys_config_enum();
   // service specific part
 };

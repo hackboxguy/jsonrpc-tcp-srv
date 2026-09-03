@@ -215,8 +215,25 @@ Acceptance
 - S6 holds. The reference client can print a text rendering of the manifest.
 
 Decisions to verify at checkpoint
-- Control types and fields in the schema.
-- Manifest file location and name on the Pi.
+- Control types and fields in the schema: `button`, `toggle`, `indicator`,
+  `text` with the fields listed in `docs/manifest.md`. (implemented
+  2026-09-03, confirm at checkpoint)
+- Manifest file location on the Pi: `/etc/xmproxy/manifest.json` next to
+  the login and ACL files, passed with `--manifest`.
+- The manifest grant: a control's `role` lets that role trigger the
+  control's action even when the underlying command is admin-only when
+  typed (for example a Domoticz alias that runs `shellcmdtrig curl`). The
+  file is admin-owned, so listing an action is the approval. Typed commands
+  keep their own rules. Without this, family members could never use a
+  Domoticz button.
+- `exec {"control": id}` and chat `run <id>` trigger controls by id; a
+  toggle takes `on` or `off`, or reads its state without an argument.
+- Command strings that do not resolve are warnings, not errors, so aliases
+  may be defined after the manifest.
+
+Status: done 2026-09-03 on branch `m2m-extension`. `test_manifest.py`
+covers 37 checks including S6 (invalid file rejected with the reason, the
+previous manifest stays served) and ten validation messages.
 
 ## Bucket 6 — Subscriptions and notifications
 
@@ -294,6 +311,7 @@ Problems discovered while building the rig, with the bucket that owns them.
 | F5 | bucket 1 | gloox 1.0.28 linked against GnuTLS (Arch, Debian and Raspberry Pi OS packages) cannot authenticate against Snikket: SCRAM-SHA-1-PLUS proposes a channel-binding type the server rejects and plain SCRAM-SHA-1 is refused as malformed. The same daemon linked against an OpenSSL-built gloox authenticates in 0.5 s. The Docker image already builds gloox with OpenSSL; the Pi install must do the same. | bucket 8 |
 | F6 | bucket 1 | Under AddressSanitizer the GnuTLS-linked gloox crashes in `gnutls_x509_trust_list_deinit` during disconnect on a plaintext session. Not reproduced with the OpenSSL build, which is the supported configuration; noted for anyone running the sanitizer rig. | documented |
 | F7 | bucket 1 | Shutdown ordering: the event receiver was destroyed before the RPC manager's threads stopped. `main.cpp` now declares it first and subscribes only once the RPC server listens. | fixed in bucket 1 |
+| F8 | bucket 5 | ThreadSanitizer caught a shutdown race: the timer thread could still deliver a heartbeat (async-task sweep) while the manager was being destroyed. `stop_timer()` now disarms the timer and joins its thread, `main` stops the timer before the manager, thread stops join cooperatively before cancelling, and the manager ignores heartbeats once stopping. | fixed in bucket 5 |
 
 ## Checkpoint template
 

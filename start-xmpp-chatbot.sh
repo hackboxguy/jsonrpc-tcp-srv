@@ -39,6 +39,12 @@ fi
 if [ ! -f /xmpp-data/xmpp-acl.txt ]; then
 	touch /xmpp-data/xmpp-acl.txt
 fi
+# device UI manifest (optional): served to apps when present
+if [ -f /xmpp-data/manifest.json ]; then
+	MANIFEST_ARG="--manifest=/xmpp-data/manifest.json"
+else
+	MANIFEST_ARG=""
+fi
 
 # Check if XMPP_AI_URL(ollama) environment variable is set
 if [ -z "$XMPP_AI_URL" ]; then
@@ -54,4 +60,4 @@ else
         AI_MODEL_ARG="--aimodel=$XMPP_AI_MODEL"
 fi
 # Start the xmpp-chatbot-server binary
-exec /usr/local/bin/xmproxysrv --loginfile=/tmp/xmpp-login.txt --aliaslist=/xmpp-data/xmpp-alias-list.txt --aclfile=/xmpp-data/xmpp-acl.txt "$AI_URL_ARG" "$AI_MODEL_ARG"
+exec /usr/local/bin/xmproxysrv --loginfile=/tmp/xmpp-login.txt --aliaslist=/xmpp-data/xmpp-alias-list.txt --aclfile=/xmpp-data/xmpp-acl.txt $MANIFEST_ARG "$AI_URL_ARG" "$AI_MODEL_ARG"

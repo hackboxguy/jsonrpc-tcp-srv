@@ -1,6 +1,7 @@
 #include "ADThread.hpp"
 #include <iostream>
 #include <signal.h>
+#include <time.h>
 using namespace std;
 int ADThreadProducer::IDGenerator = 0;
 void *thread_function(void *thread_attr) {
@@ -83,9 +84,17 @@ int ADThread::stop_thread() {
   if (pthread_attr_destroy(&attr) != 0)
     cout << "unable to destroy thread attribute" << endl;
   if (tid != -1) {
-    pthread_cancel(thread);
-    if (pthread_join(thread, &status) != 0)
-      cout << "unable to stop the thread" << endl;
+    // cooperative first: a monoshot thread leaves its loop on the semaphore
+    // post above, a noblock thread returns when its callback ends. Only a
+    // thread that is still busy after the grace period is cancelled.
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 2;
+    if (pthread_timedjoin_np(thread, &status, &deadline) != 0) {
+      pthread_cancel(thread);
+      if (pthread_join(thread, &status) != 0)
+        cout << "unable to stop the thread" << endl;
+    }
   }
   if (sem_destroy(&one_shot_sema) != 0)
     cout << "unable to destroy semaphore!!!!!!" << endl;

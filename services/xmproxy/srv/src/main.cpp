@@ -72,6 +72,7 @@ int main(int argc, const char *argv[]) {
   XmpManager.SetNetInterface(CmdLine.get_net_interface());
   XmpManager.SetAclFilePath(CmdLine.get_acl_filepath()); // buddy roles
   XmpManager.SetVersion(ver);                            // for describe
+  XmpManager.SetManifestFilePath(CmdLine.get_manifest_filepath());
   XmpManager.SetUpdateurlFilePath(
       CmdLine.get_updateurl_filepath());                // updateurl filepath
   XmpManager.SetAiAgentUrl(CmdLine.get_ai_agent_url()); // ai-agent-url
@@ -166,8 +167,8 @@ int main(int argc, const char *argv[]) {
   // wait for sigkill or sigterm signal
   AppTimer.wait_for_exit_signal(); // loop till KILL or TERM signal is received
   XMLOG_INF("exit signal received, shutting down");
+  AppTimer.stop_timer(); // no more heartbeats into objects about to stop
   XmpManager.Stop();     // disconnect the xmpp server
-  AppTimer.stop_timer(); // stop sending heart-beats to other objects
   XMLOG_INF("xmproxysrv stopped");
   return 0;
 }

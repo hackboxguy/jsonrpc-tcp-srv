@@ -1,0 +1,20 @@
+{
+  "manifest": 1,
+  "device": {"name": "home", "description": "Domoticz on the living-room Pi", "icon": "home"},
+  "groups": [
+    {"id": "lights", "label": "Lights", "icon": "lightbulb",
+     "controls": [
+       {"id": "living", "type": "toggle", "label": "Living room", "on": "livingon", "off": "livingoff", "command": "livingstate", "interval": 60, "match": "\"Status\" : \"On\""},
+       {"id": "kitchen", "type": "toggle", "label": "Kitchen", "on": "kitchenon", "off": "kitchenoff"}
+     ]},
+    {"id": "climate", "label": "Climate", "icon": "thermometer",
+     "controls": [
+       {"id": "temp", "type": "indicator", "label": "Living room temperature", "command": "livingtemp", "interval": 120, "regex": "\"Temp\" : ([0-9.]+)", "unit": "°C"}
+     ]},
+    {"id": "gate", "label": "Gate", "icon": "gate",
+     "controls": [
+       {"id": "gateopen", "type": "button", "label": "Open gate", "action": "gateopen", "confirm": true},
+       {"id": "cam", "type": "button", "label": "Snapshot to chat", "action": "snapshot", "role": "viewer"}
+     ]}
+  ]
+}

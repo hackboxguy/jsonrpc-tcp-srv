@@ -100,6 +100,10 @@ A denied command answers `return=ActionBlocked : result=requires <role>`. Contac
 
 Apps talk to the bot with JSON-RPC 2.0 in ordinary XMPP message bodies. A body starting with `{` is a request, for example `{"jsonrpc":"2.0","id":1,"method":"exec","params":{"cmd":"uptime"}}`; `describe` and `list_commands` tell an app what the device offers, and asynchronous commands finish with a `task.done` notification. The full specification is in [docs/protocol.md](docs/protocol.md). Chat commands keep working unchanged.
 
+## Device manifest: buttons for the app
+
+A JSON file on the device (`--manifest`, `/xmpp-data/manifest.json` in the Docker image) lists groups of controls: buttons, toggles, indicators and text fields, each mapped to a chat command or alias. Apps fetch it with `get_manifest` and render it; users trigger controls with `exec {"control": "gateopen"}` or, over chat, `run gateopen`. A control's `role` says who may use it, and that grant also covers aliases that would be admin-only when typed, so a family member can press "Open gate" without shell rights. Samples for a bare Pi and for Domoticz are in `helpers/configs/`; the schema is in [docs/manifest.md](docs/manifest.md). `manifest check` and `manifest reload` validate and apply changes without a restart.
+
 ## BOSH Connection (For Corporate Networks)
 
 If your network blocks XMPP port 5222 but allows HTTPS (port 443), you can use BOSH (Bidirectional-streams Over Synchronous HTTP) to tunnel XMPP traffic over HTTPS.

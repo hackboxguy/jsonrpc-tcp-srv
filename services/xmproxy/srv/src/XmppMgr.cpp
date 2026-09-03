@@ -112,7 +112,11 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
          EXMPP_USER_ACCESS_ADMIN}, // relays a message to given recipient
         {true, EXMPP_CMD_ACL, "acl",
          "[<jid> <admin|operator|viewer|remove>] | [reload]",
-         EXMPP_USER_ACCESS_ADMIN} // buddy roles
+         EXMPP_USER_ACCESS_ADMIN}, // buddy roles
+        {true, EXMPP_CMD_MANIFEST, "manifest", "[reload|check]",
+         EXMPP_USER_ACCESS_READONLY}, // summary for all, reload/check admin
+        {true, EXMPP_CMD_RUN, "run", "<control-id> [on|off]",
+         EXMPP_USER_ACCESS_READONLY} // control role is checked per control
         //{true ,EXMPP_CMD_CHANGE_ADMIN          , "changeadmin"
         //,"[buddyID]"},//only admin-buddy can run this command
 };
@@ -123,7 +127,7 @@ const int xmproxy_cmd_table_size =
 /* ------------------------------------------------------------------------- */
 XmppMgr::XmppMgr() //: AckToken(0)
     : OnFallback(false), PrimaryAvailable(false), ProbeStop(false),
-      ProbeRunning(false) {
+      ProbeRunning(false), Stopping(false) {
   FallbackAfter = XMPP_DEFAULT_FALLBACK_AFTER;
   PrimaryProbeSec = XMPP_DEFAULT_PRIMARY_PROBE_SEC;
   PingIntervalSec = XMPP_DEFAULT_PING_INTERVAL_SEC;
@@ -200,6 +204,8 @@ int XmppMgr::AttachHeartBeat(ADTimer *pTimer) {
   return 0;
 }
 int XmppMgr::timer_notification() {
+  if (Stopping)
+    return 0;
   sweep_period_ms += heartbeat_ms;
   if (sweep_period_ms >= 10000) { // every 10 s: expire stale async tasks
     sweep_period_ms = 0;
@@ -720,6 +726,12 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_ACL:
     res = proc_cmd_acl(cmdcmdMsg, returnval);
     break;
+  case EXMPP_CMD_MANIFEST:
+    res = proc_cmd_manifest(cmdcmdMsg, returnval, senderRole);
+    break;
+  case EXMPP_CMD_RUN:
+    res = proc_cmd_run(cmdcmdMsg, returnval, sender, senderRole);
+    break;
   default:
     break;
   }
@@ -901,6 +913,8 @@ XM_ROLE XmppMgr::required_role(EXMPP_CMD_TYPES cmd, const std::string &msg) {
     return count_args(msg) > 0 ? XM_ROLE_ADMIN : XM_ROLE_VIEWER;
   case EXMPP_CMD_GPIO: // gpio <num> [sts]
     return count_args(msg) > 1 ? XM_ROLE_OPERATOR : XM_ROLE_VIEWER;
+  case EXMPP_CMD_MANIFEST: // manifest | manifest reload|check
+    return count_args(msg) > 0 ? XM_ROLE_ADMIN : XM_ROLE_VIEWER;
   default:
     break;
   }
@@ -961,6 +975,181 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_acl(std::string msg, std::string &returnval) {
                             : RPC_SRV_RESULT_FILE_WRITE_ERR;
 }
 /* ------------------------------------------------------------------------- */
+// commands named by manifest controls that do not resolve (typo, or an
+// alias that is not defined yet) are reported as warnings, never as errors
+std::vector<std::string> XmppMgr::manifest_command_warnings() {
+  std::vector<std::string> out;
+  XmManifest m;
+  if (!Manifest.get(m))
+    return out;
+  for (size_t g = 0; g < m.groups.size(); g++) {
+    for (size_t ci = 0; ci < m.groups[g].controls.size(); ci++) {
+      const XmControl &c = m.groups[g].controls[ci];
+      const std::string *fields[4] = {&c.action, &c.on, &c.off, &c.command};
+      for (int f = 0; f < 4; f++) {
+        if (fields[f]->empty())
+          continue;
+        std::deque<std::string> steps = expand_command(*fields[f]);
+        for (size_t i = 0; i < steps.size(); i++) {
+          if (ResolveCmdStr(steps[i]) == EXMPP_CMD_UNKNOWN)
+            out.push_back("control '" + c.id + "': '" + steps[i] +
+                          "' is not a known command or alias");
+        }
+      }
+    }
+  }
+  return out;
+}
+RPC_SRV_RESULT XmppMgr::execute_control(const XmControl &control,
+                                        const std::string &arg,
+                                        const std::string &sender,
+                                        XM_ROLE senderRole,
+                                        std::vector<StepResult> &steps,
+                                        std::string &errorText) {
+  if (senderRole < control.role) {
+    XMLOG_WRN("manifest: %s (%s) denied control '%s', needs %s", sender.c_str(),
+              xm_role_name(senderRole), control.id.c_str(),
+              xm_role_name(control.role));
+    errorText = std::string("requires ") + xm_role_name(control.role);
+    return RPC_SRV_RESULT_ACTION_NOT_ALLOWED;
+  }
+  std::string cmd;
+  if (control.type == "button")
+    cmd = control.action;
+  else if (control.type == "toggle") {
+    if (arg == "on")
+      cmd = control.on;
+    else if (arg == "off")
+      cmd = control.off;
+    else if (arg.empty() && !control.command.empty())
+      cmd = control.command; // read the state
+    else {
+      errorText = "toggle needs on or off";
+      return RPC_SRV_RESULT_ARG_ERROR;
+    }
+  } else
+    cmd = control.command; // indicator, text: read
+  XMLOG_INF("manifest: %s runs control '%s' (%s) as %s", sender.c_str(),
+            control.id.c_str(), cmd.c_str(), xm_role_name(control.role));
+  std::deque<std::string> expanded = expand_command(cmd);
+  RPC_SRV_RESULT overall = RPC_SRV_RESULT_SUCCESS;
+  for (std::deque<std::string>::iterator it = expanded.begin();
+       it != expanded.end(); ++it) {
+    StepResult sr;
+    sr.cmd = *it;
+    sr.task = -1;
+    // the manifest grant: run with admin rights for this approved action
+    sr.res = run_single_command(*it, sender, XM_ROLE_ADMIN, sr.text, NULL);
+    if (sr.res == RPC_SRV_RESULT_IN_PROG &&
+        sr.text.compare(0, 7, "taskID=") == 0)
+      sr.task = atoi(sr.text.c_str() + 7);
+    if (overall == RPC_SRV_RESULT_SUCCESS && sr.res != RPC_SRV_RESULT_SUCCESS)
+      overall = sr.res;
+    steps.push_back(sr);
+  }
+  return overall;
+}
+// manifest              summary (file, device, groups, controls, warnings)
+// manifest reload       re-read the file; the previous one is kept on error
+// manifest check        validate the file without applying it
+RPC_SRV_RESULT XmppMgr::proc_cmd_manifest(std::string msg,
+                                          std::string &returnval,
+                                          XM_ROLE senderRole) {
+  stringstream ss(msg);
+  std::string cmd, sub;
+  ss >> cmd >> sub;
+  if (sub.empty()) {
+    XmManifest m;
+    if (!Manifest.get(m)) {
+      returnval = Manifest.get_file().empty()
+                      ? "no manifest file configured"
+                      : "not loaded: " + Manifest.get_last_error();
+      return RPC_SRV_RESULT_FILE_NOT_FOUND;
+    }
+    std::stringstream out;
+    out << "\ndevice " << m.deviceName << "\nfile " << Manifest.get_file()
+        << "\ngroups " << m.groups.size() << "\ncontrols " << m.control_count()
+        << "\n";
+    for (size_t g = 0; g < m.groups.size(); g++)
+      for (size_t c = 0; c < m.groups[g].controls.size(); c++)
+        out << m.groups[g].controls[c].id << " ("
+            << m.groups[g].controls[c].type << ", "
+            << xm_role_name(m.groups[g].controls[c].role) << ")\n";
+    std::vector<std::string> w = manifest_command_warnings();
+    for (size_t i = 0; i < w.size(); i++)
+      out << "warning: " << w[i] << "\n";
+    returnval = out.str();
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  if (Manifest.get_file().empty()) {
+    returnval = "no manifest file configured (--manifest)";
+    return RPC_SRV_RESULT_FILE_NOT_FOUND;
+  }
+  std::string err;
+  std::vector<std::string> warn;
+  if (sub == "check") {
+    XmManifest tmp;
+    if (!XmManifestStore::parse_file(Manifest.get_file(), tmp, err, warn)) {
+      returnval = err;
+      return RPC_SRV_RESULT_FAIL;
+    }
+    std::stringstream out;
+    out << "valid, " << tmp.groups.size() << " group(s), "
+        << tmp.control_count() << " control(s)";
+    for (size_t i = 0; i < warn.size(); i++)
+      out << "\nwarning: " << warn[i];
+    returnval = out.str();
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  if (sub == "reload") {
+    if (!Manifest.reload(err, warn)) {
+      returnval =
+          err + (Manifest.is_loaded() ? " (previous manifest kept)" : "");
+      return RPC_SRV_RESULT_FAIL;
+    }
+    std::vector<std::string> cw = manifest_command_warnings();
+    warn.insert(warn.end(), cw.begin(), cw.end());
+    std::stringstream out;
+    out << "loaded " << Manifest.get_file();
+    for (size_t i = 0; i < warn.size(); i++)
+      out << "\nwarning: " << warn[i];
+    returnval = out.str();
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  return RPC_SRV_RESULT_ARG_ERROR;
+}
+// run <control-id> [on|off]: chat access to a manifest control; every step
+// is replied like a chat command, the last one as the command's own reply
+RPC_SRV_RESULT XmppMgr::proc_cmd_run(std::string msg, std::string &returnval,
+                                     const std::string &sender,
+                                     XM_ROLE senderRole) {
+  stringstream ss(msg);
+  std::string cmd, id, arg;
+  ss >> cmd >> id >> arg;
+  if (id.empty())
+    return RPC_SRV_RESULT_ARG_ERROR;
+  XmControl control;
+  if (!Manifest.find_control(id, control)) {
+    returnval = "unknown control " + id;
+    return RPC_SRV_RESULT_ITEM_NOT_FOUND;
+  }
+  std::vector<StepResult> steps;
+  std::string err;
+  RPC_SRV_RESULT res =
+      execute_control(control, arg, sender, senderRole, steps, err);
+  if (steps.empty()) {
+    returnval = err;
+    return res;
+  }
+  for (size_t i = 0; i + 1 < steps.size(); i++) {
+    std::string response = "return=" + result_code_name(steps[i].res) +
+                           " : result=" + steps[i].text;
+    XmppProxy.send_reply(response, sender);
+  }
+  returnval = steps.back().text;
+  return steps.back().res;
+}
+/* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   if (accountFilePath.size() <= 0)
     return RPC_SRV_RESULT_FAIL;
@@ -973,6 +1162,17 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   else
     XMLOG_INF("acl: no --aclfile, roster members get the default role %s",
               xm_role_name(Acl.get_default_role()));
+  Manifest.set_file(ManifestFile);
+  if (!ManifestFile.empty()) {
+    std::string err;
+    std::vector<std::string> warn;
+    if (Manifest.reload(err, warn)) {
+      std::vector<std::string> cw = manifest_command_warnings();
+      for (size_t i = 0; i < cw.size(); i++)
+        XMLOG_WRN("manifest: %s", cw[i].c_str());
+    }
+  } else
+    XMLOG_INF("manifest: no --manifest file, get_manifest is not available");
   LoadEventSubscrList(EventSubscrListFile, &myEventList);
 
   // cout<<"loginfilepath: "<<accountFilePath<<endl;
@@ -1091,6 +1291,7 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
 }
 RPC_SRV_RESULT XmppMgr::Stop() {
   XMLOG_INF("xmpp: shutdown requested");
+  Stopping = true;
   XmppProxy.setForcedDisconnect();
   ProbeStop = true;
   XmppProxy.disconnect(); // bounded wait for the session to end

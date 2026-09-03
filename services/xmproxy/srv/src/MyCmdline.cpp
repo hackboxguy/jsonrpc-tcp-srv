@@ -14,6 +14,7 @@ typedef enum XMPROXY_CMDLINE_OPT_T {
   XMPROXY_CMDLINE_OPT_SYSCFG,       // system-type
   XMPROXY_CMDLINE_OPT_LOGLEVEL,     // error|warn|info|debug
   XMPROXY_CMDLINE_OPT_ACLFILE,      // buddy roles file
+  XMPROXY_CMDLINE_OPT_MANIFEST,     // UI manifest file
   XMPROXY_CMDLINE_OPT_UNKNOWN,
   XMPROXY_CMDLINE_OPT_NONE
 } XMPROXY_CMDLINE_OPT;
@@ -84,6 +85,11 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
   CmdlineHelper.insert_help_entry(
       (char *)"--aclfile=filepath         (buddy roles: one 'jid role' per "
               "line; admin, operator, viewer)");
+  CmdlineHelper.insert_options_entry((char *)"manifest", optional_argument,
+                                     XMPROXY_CMDLINE_OPT_MANIFEST);
+  CmdlineHelper.insert_help_entry(
+      (char *)"--manifest=filepath        (device UI manifest served to apps, "
+              "see docs/manifest.md)");
   strcpy(LoginFilePath, XMPROXY_DEFAULT_LOGIN_FILE_PATH);
   UsbGSMSts = false;
   AliasListFilePath[0] = '\0';
@@ -178,6 +184,12 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
       AclFilePath = "";
     else
       AclFilePath = sub_arg;
+    break;
+  case XMPROXY_CMDLINE_OPT_MANIFEST:
+    if (CmdlineHelper.get_next_subargument(&sub_arg) == 0)
+      ManifestFilePath = "";
+    else
+      ManifestFilePath = sub_arg;
     break;
   case XMPROXY_CMDLINE_OPT_LOGLEVEL:
     if (CmdlineHelper.get_next_subargument(&sub_arg) == 0)
@@ -276,6 +288,7 @@ std::string MyCmdline::get_ai_model() { return AiModel; }
 std::string MyCmdline::get_sys_config() { return SystemConfig; }
 std::string MyCmdline::get_log_level() { return LogLevel; }
 std::string MyCmdline::get_acl_filepath() { return AclFilePath; }
+std::string MyCmdline::get_manifest_filepath() { return ManifestFilePath; }
 ADCMN_SYSCFG_TYPE MyCmdline::get_sys_config_enum() {
   const char *table[] = ADCMN_SYSCFG_TYPE_TABLE;
   int result;

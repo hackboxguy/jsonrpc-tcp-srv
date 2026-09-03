@@ -25,3 +25,5 @@ unsubscribe [buddyID]
 acceptbuddylist 
 relaymsg <buddyID> <message>
 acl [<jid> <admin|operator|viewer|remove>] | [reload]
+manifest [reload|check]
+run <control-id> [on|off]

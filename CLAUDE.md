@@ -200,6 +200,16 @@ of the chat parser: methods `ping`, `describe`, `list_commands`, `exec`
 duplicate suppression per sender and request id. Specification:
 `services/xmproxy/docs/protocol.md`. Chat mode is untouched.
 
+### Device manifest (since bucket 5)
+
+`--manifest=PATH` names a JSON file describing groups of controls (button,
+toggle, indicator, text) that map to chat commands or aliases
+(`services/xmproxy/srv/src/Manifest.cpp`, spec in
+`services/xmproxy/docs/manifest.md`). Served by `get_manifest`, triggered by
+`exec {"control": id}` or chat `run <id>`; a control's `role` is an
+admin-approved grant for that action. `manifest`, `manifest check`,
+`manifest reload` manage it over chat; an invalid file keeps the previous one.
+
 ## Data Flow
 
 ### Incoming XMPP Message Flow
@@ -261,6 +271,7 @@ xmproxysrv [OPTIONS]
   --aimodel=<model>          # AI model name
   --loglevel=<level>         # error|warn|info|debug (default info)
   --aclfile=<path>           # buddy roles file (admin, operator, viewer)
+  --manifest=<path>          # device UI manifest served to apps
 ```
 
 Optional login-file keys: `server`, `port`, `pinginterval`, `pingmisses`,

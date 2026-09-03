@@ -7,6 +7,7 @@
 #include "ADXmppProxy.hpp"
 #endif
 #include "Acl.h"
+#include "Manifest.h"
 #include "XmLog.h"
 #include <atomic>
 #include <deque>
@@ -104,7 +105,9 @@ typedef enum EXMPP_CMD_TYPES_T {
   EXMPP_CMD_BUDDY_UNSUBSCRIBE,
   EXMPP_CMD_ACCEPT_BUDDY_LIST,
   EXMPP_CMD_RELAY_MESSAGE,
-  EXMPP_CMD_ACL, // list/set/remove/reload buddy roles (admin)
+  EXMPP_CMD_ACL,      // list/set/remove/reload buddy roles (admin)
+  EXMPP_CMD_MANIFEST, // manifest summary (viewer), reload/check (admin)
+  EXMPP_CMD_RUN,      // run <control-id> [on|off] from the manifest
   EXMPP_CMD_UNKNOWN,
   EXMPP_CMD_NONE
 } EXMPP_CMD_TYPES;
@@ -280,6 +283,7 @@ class XmppMgr : public ADXmppConsumer,
   std::atomic<bool> PrimaryAvailable; // set by the probe thread
   std::atomic<bool> ProbeStop;
   std::atomic<bool> ProbeRunning;
+  std::atomic<bool> Stopping; // set by Stop(): heartbeats are ignored
   ADThread ProbeThread;
   int clientThreadID;
   int probeThreadID;
@@ -287,6 +291,27 @@ class XmppMgr : public ADXmppConsumer,
   std::string ActiveJid;
   XmAcl Acl;
   std::string AclFile;
+  XmManifestStore Manifest;
+  std::string ManifestFile;
+  // one executed step of a control or exec
+  struct StepResult {
+    std::string cmd;
+    RPC_SRV_RESULT res;
+    std::string text;
+    int task;
+  };
+  // runs a manifest control for sender; checks the control's role (the
+  // manifest grant) and then executes its command(s) with that grant
+  RPC_SRV_RESULT execute_control(const XmControl &control,
+                                 const std::string &arg,
+                                 const std::string &sender, XM_ROLE senderRole,
+                                 std::vector<StepResult> &steps,
+                                 std::string &errorText);
+  std::vector<std::string> manifest_command_warnings();
+  RPC_SRV_RESULT proc_cmd_manifest(std::string msg, std::string &returnval,
+                                   XM_ROLE senderRole);
+  RPC_SRV_RESULT proc_cmd_run(std::string msg, std::string &returnval,
+                              const std::string &sender, XM_ROLE senderRole);
   std::string AppVersion; // reported by describe
   // request context while the worker runs a command (worker thread only):
   // async task entries created meanwhile are tagged with it
@@ -319,6 +344,14 @@ class XmppMgr : public ADXmppConsumer,
 
 public:
   struct json_object *json_describe(XM_ROLE role);
+  struct json_object *json_get_manifest(XM_ROLE role,
+                                        struct json_object **error);
+  struct json_object *json_exec_control(const std::string &id,
+                                        const std::string &arg,
+                                        const std::string &sender, XM_ROLE role,
+                                        const std::string &reqId,
+                                        struct json_object **error);
+  bool manifest_loaded() { return Manifest.is_loaded(); }
   struct json_object *json_list_commands(XM_ROLE role);
   struct json_object *json_exec(const std::string &cmd,
                                 const std::string &sender, XM_ROLE role,
@@ -522,6 +555,9 @@ public:
     EventSubscrListFile = filepath;
   };
   inline void SetAclFilePath(std::string filepath) { AclFile = filepath; };
+  inline void SetManifestFilePath(std::string filepath) {
+    ManifestFile = filepath;
+  };
   inline void SetUpdateurlFilePath(std::string filepath) {
     UpdateUrlFile = filepath;
   };

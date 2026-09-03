@@ -53,6 +53,10 @@ The runner:
    - JSON-RPC over XMPP (`test_jsonrpc.py`): every method, batches,
      notifications, malformed input, authorization, async completion,
      duplicate suppression, interleaving with chat (see `docs/protocol.md`),
+   - manifest (`test_manifest.py`): served manifest and `allowed` flags per
+     role, control grants, toggles, async controls, chat `run`, reload and
+     check with an invalid file, validation messages (see
+     `docs/manifest.md`),
    - stress (`test_stress.py`): admin and guest each send 250 commands while
      Prosody is restarted twice; passes only with zero lost or extra replies,
    - failover (`test_failover.py`): primary stopped, bot answers as the
@@ -109,6 +113,13 @@ case in `cases.json`.
 - Client: `tests/xmppclient.py`, a small slixmpp wrapper. `ask()` sends one
   message and collects replies until the bot has been quiet for 1.5 s.
 - Ports: Prosody 5222, sysmgr 40001, xmproxysrv 40005. All on 127.0.0.1.
+
+## Manifest
+
+`--manifest=PATH` names the device UI manifest (schema and semantics in
+`docs/manifest.md`). The rig copies `tests/fixtures/manifest.json` to
+`.run/manifest.json`; samples for a bare Pi and for Domoticz are in
+`helpers/configs/`.
 
 ## Roles and the ACL file
 

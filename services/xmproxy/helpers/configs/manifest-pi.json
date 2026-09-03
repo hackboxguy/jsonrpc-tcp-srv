@@ -1,0 +1,22 @@
+{
+  "manifest": 1,
+  "device": {"name": "workshop-pi", "description": "Raspberry Pi 4 in the workshop", "icon": "raspberry"},
+  "groups": [
+    {"id": "status", "label": "Status", "icon": "info",
+     "controls": [
+       {"id": "uptime", "type": "text", "label": "Uptime", "command": "uptime", "interval": 300},
+       {"id": "ip", "type": "text", "label": "Local IP", "command": "localip", "interval": 600},
+       {"id": "host", "type": "text", "label": "Hostname", "command": "hostname", "interval": 3600}
+     ]},
+    {"id": "gpio", "label": "GPIO",
+     "controls": [
+       {"id": "relay1", "type": "toggle", "label": "Relay 1", "on": "gpio 17 1", "off": "gpio 17 0", "command": "gpio 17", "interval": 30, "match": "1"},
+       {"id": "door", "type": "indicator", "label": "Door contact", "command": "gpio 27", "interval": 10, "regex": "([01])"}
+     ]},
+    {"id": "system", "label": "System", "icon": "settings",
+     "controls": [
+       {"id": "identify", "type": "button", "label": "Blink LED", "action": "identify"},
+       {"id": "reboot", "type": "button", "label": "Reboot", "action": "reboot", "role": "admin", "confirm": true}
+     ]}
+  ]
+}

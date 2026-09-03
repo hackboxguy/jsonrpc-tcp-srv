@@ -35,7 +35,8 @@ Error: `{"jsonrpc": "2.0", "error": {"code": -32001, "message": "Not authorized"
 | `ping` | viewer | none | `{"pong": true, "time": <unix seconds>}` |
 | `describe` | viewer | none | device and session description, see below |
 | `list_commands` | viewer | none | array of `{"name", "args", "role", "allowed"}` for every enabled chat command; `allowed` is evaluated for the caller |
-| `exec` | per command | `{"cmd": "<one chat command>"}` | see below |
+| `exec` | per command or control | `{"cmd": "<one chat command>"}` or `{"control": "<id>", "arg": "on"}` | see below |
+| `get_manifest` | viewer | none | the device manifest with `allowed` per control, see `manifest.md`; error `-32004` when no manifest is loaded |
 
 ### describe
 
@@ -49,8 +50,8 @@ Error: `{"jsonrpc": "2.0", "error": {"code": -32001, "message": "Not authorized"
 ```
 
 `fallback` is present only when one is configured. `role` is the caller's
-role. The manifest (bucket 5) will be reachable through a `get_manifest`
-method and listed in `methods`.
+role. `"manifest": true` and `get_manifest` in `methods` tell the app that a
+manifest is served.
 
 ### exec
 
@@ -80,6 +81,15 @@ Result:
   `"return": "InProgress"` with `"task": <n>` (also inside the step). The
   completion arrives later as a `task.done` notification.
 
+### exec with a control
+
+`{"control": "<id>"}` runs a manifest control by id; `"arg": "on"` or
+`"off"` selects the position of a toggle, and a toggle without `arg` reads
+its state. The control's own role is checked (the manifest grant, see
+`manifest.md`). The result is as for `cmd` with an added `"control"` field.
+Errors: `-32001` (role below the control's, `data.control` and
+`data.requires`), `-32602` (unknown control, bad toggle argument).
+
 ### task.done notification
 
 Sent by the bot to the requester when an asynchronous command finishes or
@@ -102,6 +112,7 @@ times out (`asynctimeout`):
 | -32602 | Invalid params: `exec` without `cmd`, empty command, or a `;` batch |
 | -32001 | Not authorized: `data` carries `cmd` and `requires` (the role needed). Nothing was executed. |
 | -32002 | Busy: the command queue is full; retry later |
+| -32004 | No manifest loaded: `data.reason` says why |
 
 ## Duplicate suppression
 

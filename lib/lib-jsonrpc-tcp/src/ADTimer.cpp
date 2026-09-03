@@ -82,6 +82,13 @@ int ADTimer::stop_timer() {
   if (passive_mode == true)
     return 0;
   stoptimer = 1;
+  // disarm the interval timer and stop the notification thread here, not in
+  // the destructor: subscribers are usually destroyed before the timer
+  // object and must not receive notifications any more
+  struct itimerval off;
+  memset(&off, 0, sizeof(off));
+  setitimer(ITIMER_REAL, &off, NULL);
+  TimerThread.stop_thread();
   return 0;
 }
 void ADTimer::millisec_signal_handler(int sig_no) {
