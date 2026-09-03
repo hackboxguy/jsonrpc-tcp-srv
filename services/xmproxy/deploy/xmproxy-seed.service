@@ -1,0 +1,13 @@
+[Unit]
+Description=xmproxy durable state seeding (directories, default config)
+DefaultDependencies=no
+RequiresMountsFor=/data
+After=local-fs.target ab-factory-reset.service
+Before=sysmgr.service xmproxysrv.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/xmproxy/bin/xmproxy-seed.sh /data/xmproxy /opt/xmproxy/share/xmproxy/etc
+
+[Install]
+WantedBy=multi-user.target

@@ -234,6 +234,17 @@ async def m():
 asyncio.run(m())"
 ```
 
+## Deploying on a Raspberry Pi
+
+`services/xmproxy/deploy/install-pi.sh` (run as root on Raspberry Pi OS
+Lite) installs the build dependencies, runs `build-from-source.sh` (gloox
+with OpenSSL plus the daemons into `/opt/xmproxy`), creates the `xmproxy`
+system user, installs `sysmgr.service` and `xmproxysrv.service`, and seeds
+`/etc/xmproxy` (login file, manifest, `xmproxy.env`) and `/var/lib/xmproxy`
+(alias, ACL, subscription state). Existing files are never overwritten.
+`build-from-source.sh` alone is what an image builder or package recipe
+should call.
+
 ## Cross-compile check (OpenWrt)
 
 The repo supports `-DCMAKE_TOOLCHAIN_FILE=...` (see the comment in the root

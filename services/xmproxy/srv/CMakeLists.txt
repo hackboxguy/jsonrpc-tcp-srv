@@ -139,6 +139,9 @@ if(AUTO_GIT_VERSION)
       OUTPUT_VARIABLE GIT_COMMIT_COUNT
       OUTPUT_STRIP_TRAILING_WHITESPACE
     )
+    if(NOT GIT_COMMIT_COUNT)
+      set(GIT_COMMIT_COUNT "0001") # no .git (tarball, docker context)
+    endif()
   else()
     # Fallback if Git is not found
     set(GIT_COMMIT_COUNT "0001")

@@ -303,6 +303,20 @@ Scope
 - 72 h soak with an indicator polling every 10 s and scripted network cuts;
   latency measurement for S1.
 - Release notes, version tag, updated Docker image.
+- Owner's addition (2026-09-03): packaging for the `misc-tools` image
+  builder (a `packages/` recipe and the `micropanel-touch` board config) so
+  that the daemons ship in the owner's A/B Pi image, and a settings page in
+  the `micropanel-touch` launcher for configuring xmproxy.
+
+Decisions taken so far
+- The soak runs on the development machine against the owner's Snikket
+  server, using the Docker image (gloox built with OpenSSL) so that network
+  cuts can be scripted with `docker network disconnect`. No Pi is reachable
+  from this session.
+- Layout on the Pi: binaries and libraries under `/opt/xmproxy`, config
+  under `/etc/xmproxy`, mutable state under `/var/lib/xmproxy`; xmproxysrv
+  runs as the `xmproxy` user, sysmgr as root (it executes admin shell
+  commands and reboots). Logs go to journald.
 
 Acceptance
 - S1, S2 and S3 measured and recorded in `docs/soak-report.md`.

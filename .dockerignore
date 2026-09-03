@@ -1,0 +1,10 @@
+# host build trees and development-only files must not enter the image
+Output*/
+Output-*.log
+build/
+.git/
+services/xmproxy/tests/.venv/
+services/xmproxy/tests/.run/
+services/xmproxy/tests/.run-*/
+services/xmproxy/tests/local/
+__pycache__/

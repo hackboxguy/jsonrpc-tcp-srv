@@ -1282,8 +1282,6 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
     XMLOG_INF("manifest: no --manifest file, get_manifest is not available");
   Subs.set_file(SubscrFile);
   Subs.load();
-  if (HeartbeatSec > 0)
-    XMLOG_INF("events: heartbeat every %d s to subscribers", HeartbeatSec);
   LoadEventSubscrList(EventSubscrListFile, &myEventList);
 
   // cout<<"loginfilepath: "<<accountFilePath<<endl;
@@ -1385,6 +1383,8 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
     XMLOG_INF("xmpp: fallback account %s after %d failures, primary probed "
               "every %d s",
               FallbackAccount.user.c_str(), FallbackAfter, PrimaryProbeSec);
+  if (HeartbeatSec > 0)
+    XMLOG_INF("events: heartbeat every %d s to subscribers", HeartbeatSec);
 
   file.close();
 

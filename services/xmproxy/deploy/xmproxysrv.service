@@ -1,0 +1,34 @@
+[Unit]
+Description=xmproxy XMPP IoT endpoint (chat bot + JSON-RPC over XMPP)
+Documentation=https://github.com/hackboxguy/jsonrpc-tcp-srv
+After=network-online.target sysmgr.service
+Wants=network-online.target
+Requires=sysmgr.service
+
+[Service]
+Type=simple
+User=xmproxy
+Group=xmproxy
+EnvironmentFile=-/etc/xmproxy/xmproxy.env
+Environment=LD_LIBRARY_PATH=/opt/xmproxy/lib
+ExecStart=/opt/xmproxy/bin/xmproxysrv \
+    --loginfile=/etc/xmproxy/xmpp-login.txt \
+    --aliaslist=/var/lib/xmproxy/xmpp-alias-list.txt \
+    --botname=/var/lib/xmproxy/xmpp-botname.txt \
+    --aclfile=/var/lib/xmproxy/xmpp-acl.txt \
+    --manifest=/etc/xmproxy/manifest.json \
+    --subscrfile=/var/lib/xmproxy/xmpp-subscriptions.txt \
+    --evntsubscr=/var/lib/xmproxy/xmpp-evntsubscr.txt \
+    --syscfg=${XMPROXY_SYSCFG} --loglevel=${XMPROXY_LOGLEVEL} $XMPROXY_EXTRA_ARGS
+Restart=always
+RestartSec=5
+# the daemon exits within 5 s on SIGTERM (bucket 1 acceptance)
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/xmproxy /tmp
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

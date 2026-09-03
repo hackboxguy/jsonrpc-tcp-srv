@@ -1,0 +1,17 @@
+[Unit]
+Description=xmproxy system manager (shell, uptime, identify for xmproxysrv)
+After=network.target
+
+[Service]
+Type=simple
+# sysmgr executes admin shell commands and reboots on request, so it runs
+# as root; xmproxysrv talks to it on 127.0.0.1:40001 only
+EnvironmentFile=-/etc/xmproxy/xmproxy.env
+Environment=LD_LIBRARY_PATH=/opt/xmproxy/lib
+ExecStart=/opt/xmproxy/bin/sysmgr --syscfg=${XMPROXY_SYSCFG}
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
