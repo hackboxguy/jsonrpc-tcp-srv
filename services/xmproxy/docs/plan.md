@@ -374,6 +374,36 @@ Acceptance
   daemon log in; the indicator turns green; the file survives reboot and
   A/B update; the unit tests pass on the host.
 
+Progress (2026-09-03)
+- Host side delivered in micropanel-touch `a45f982` (main): Network tile
+  "IOT-Agent" (icon: envelope), screen with Account / Server (optional) /
+  Password (eye reveal, cleared on submit and on leaving the screen),
+  Connect, and a disc indicator: green `Connected`, red `Not connected`
+  (daemon up, no XMPP session) or `Agent not running` (RPC port closed),
+  grey `Checking...`.
+- Privilege path: typed broker operation `iot_agent_config` (user, optional
+  server, password) validated by one shared validator (bare JID with
+  host-name domain, host-name server, password 1–128 chars without
+  whitespace/control characters because the login parser splits on
+  whitespace); handler `micropanel-touch-iot-agent-config` gets the password
+  on stdin, rewrites only `user:`/`pw:`/`server:` in
+  `/data/xmproxy/etc/xmpp-login.txt` (adminbuddy, tuning and fallback lines
+  preserved), atomic replace as root:xmproxy 0640, then
+  `systemctl restart --no-block xmproxysrv.service`.
+- Status poller `IotAgentStatusMonitor`: background thread, polls
+  `get_online_status` on 127.0.0.1:40005 every 1.5 s only while the screen
+  renews a 5 s lease, so an idle panel never touches the daemon.
+- Panel-side memory: `/data/micropanel-touch/iot-agent.conf` holds account
+  and server, never the password.
+- Tests added (61/61 pass on the host): validator, broker wire shapes,
+  client round trip, settings file, monitor against a fake agent, handler
+  contract + policy, starter config (6 Network tiles), headless navigation.
+- misc-tools `e27275b` (main): capability row `xmproxy-configuration` is
+  `supported`; PERSISTENCE.md names the handler and the launcher file.
+- Deferred, as agreed: BOSH toggle and custom port on the same screen. The
+  admin buddy is not on the screen; it stays whatever the seeded login file
+  or a hand edit says (the ACL file is the intended way to grant roles).
+
 ## Proposed additions (not yet scheduled, owner to decide)
 
 Raised at the bucket 0 checkpoint. Each names the bucket it would join.
