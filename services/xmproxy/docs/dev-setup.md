@@ -243,9 +243,13 @@ system user, installs `sysmgr.service` and `xmproxysrv.service`, and seeds
 `/etc/xmproxy` (login file, manifest, `xmproxy.env`) and `/var/lib/xmproxy`
 (alias, ACL, subscription state). Existing files are never overwritten.
 `build-from-source.sh` alone is what an image builder or package recipe
-should call. The owner's `misc-tools` image builder does exactly that:
-`board-configs/micropanel-touch/packages/jsonrpc-tcp-srv-hook.sh` (branch
-`xmproxy-package`) builds into `/opt/xmproxy`, creates the account from
+should call.
+`xmproxysrv.service` carries `ConditionPathExists=!/etc/xmproxy/disabled`:
+the launcher's IOT-Agent screen creates that marker on Disconnect (and stops
+the unit) so the agent stays down across reboots, and removes it on Connect.
+ The owner's `misc-tools` image builder does exactly that:
+`board-configs/micropanel-touch/packages/jsonrpc-tcp-srv-hook.sh` (on
+`main`) builds into `/opt/xmproxy`, creates the account from
 `deploy/sysusers-xmproxy.conf`, installs the units with config and state
 redirected to `/data/xmproxy/etc` and `/data/xmproxy/state` (the rootfs is a
 tmpfs overlay on that appliance), and enables `deploy/xmproxy-seed.service`,

@@ -4,6 +4,10 @@ Documentation=https://github.com/hackboxguy/jsonrpc-tcp-srv
 After=network-online.target sysmgr.service
 Wants=network-online.target
 Requires=sysmgr.service
+# "Disconnect" on the panel: the launcher's broker creates this marker and
+# stops the unit, so the agent stays down across reboots until Connect
+# removes it again.
+ConditionPathExists=!/etc/xmproxy/disabled
 
 [Service]
 Type=simple
