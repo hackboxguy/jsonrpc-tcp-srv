@@ -410,9 +410,17 @@ Progress (2026-09-03)
   (`bot@localhost`, server `192.168.1.80`). The green indicator itself was
   checked in a headless render on the host; the Pi has no control socket,
   so tapping the real panel is the owner's check.
-- Deferred, as agreed: BOSH toggle and custom port on the same screen. The
-  admin buddy is not on the screen; it stays whatever the seeded login file
-  or a hand edit says (the ACL file is the intended way to grant roles).
+- Second round (2026-09-03, owner feedback after testing on the panel;
+  micropanel-touch main, jsonrpc-tcp-srv `00568ac`): "Saved. Connecting..."
+  then "Agent Connected"; the button reads Disconnect when the saved account
+  is connected (typed op `iot_agent_control` stop/start; stop leaves
+  `/data/xmproxy/etc/disabled`, read by the unit's `ConditionPathExists=`,
+  so the agent stays down across reboots); an Advanced panel on the same
+  screen adds the custom port, BOSH (URL + optional host) and the admin
+  account. Tested on the Pi through a tmpfs deploy (`tools/cross-build.sh`):
+  stop → marker + unit inactive (a plain `systemctl start` stays down),
+  start → online in 2 s, login file and password untouched. The owner tests
+  the form on the panel before the next image build.
 
 ## Proposed additions (not yet scheduled, owner to decide)
 
