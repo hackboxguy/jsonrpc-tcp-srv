@@ -400,6 +400,16 @@ Progress (2026-09-03)
   contract + policy, starter config (6 Network tiles), headless navigation.
 - misc-tools `e27275b` (main): capability row `xmproxy-configuration` is
   `supported`; PERSISTENCE.md names the handler and the launcher file.
+- Pi verification (2026-09-03, image 00.53 built from micropanel-touch
+  `a45f982` + jsonrpc-tcp-srv `8d0de2c`, applied over A/B update): the
+  broker request `iot_agent_config` sent as the HMI user rewrote
+  `/data/xmproxy/etc/xmpp-login.txt` (root:xmproxy 0640, `adminbuddy:`
+  preserved, `server:` added), a malformed request was refused without
+  touching the file, and the restarted daemon reported `online` on
+  127.0.0.1:40005 three seconds later against a LAN Prosody
+  (`bot@localhost`, server `192.168.1.80`). The green indicator itself was
+  checked in a headless render on the host; the Pi has no control socket,
+  so tapping the real panel is the owner's check.
 - Deferred, as agreed: BOSH toggle and custom port on the same screen. The
   admin buddy is not on the screen; it stays whatever the seeded login file
   or a hand edit says (the ACL file is the intended way to grant roles).
