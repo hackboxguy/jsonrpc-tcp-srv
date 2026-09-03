@@ -431,7 +431,7 @@ Start here in a new session. Everything below is the state at close.
 | What | Where | State |
 |---|---|---|
 | Daemon work (buckets 0–9) | jsonrpc-tcp-srv, branch `m2m-extension` (latest docs commit after `00568ac`) | complete, all suites green, ASan/TSan clean |
-| Launcher IOT-Agent screen | micropanel-touch `main` (`a45f982` first release, `0ea6dbf` second round, then the button-label fix) | complete, 62/62 host tests |
+| Launcher IOT-Agent screen | micropanel-touch `main` (`a45f982` first release, `0ea6dbf` second round, `9e6ed7c` button-label fix) | complete, 62/62 host tests |
 | Image packaging | misc-tools `main` (`e27275b`, `75fab06`, `4e8b5a8`) | hook pins jsonrpc-tcp-srv branch `m2m-extension` |
 | Pi 4 (192.168.1.197, panel luckfox-ctp) | image **00.53**, slot A | runs the owner's real account (`home@remotekit...`), online |
 | Pi tmpfs overlay | launcher/broker/handlers from micropanel-touch `main` head, unit with `ConditionPathExists` | **lost on reboot**: a reboot reverts to 00.53 (old screen, unit without the marker condition) |
@@ -466,7 +466,7 @@ Start here in a new session. Everything below is the state at close.
   green but the button read "Connect". Cause: the Connect/Disconnect label
   state (`iot_agent_button_is_disconnect_`) outlived the screen and the
   relabel was skipped on the next visit. Fixed in micropanel-touch `main`
-  (commit after `0ea6dbf`, "relabel the button on every visit") with a
+  (`9e6ed7c`, "relabel the button on every visit") with a
   headless regression test; deployed to the Pi's tmpfs, so it is live until
   the next reboot and will be in 00.54.
 - `tools/cross-build.sh --deploy` fails at the ssh step because the Pi's host
