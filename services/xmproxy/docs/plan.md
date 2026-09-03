@@ -422,6 +422,91 @@ Progress (2026-09-03)
   start → online in 2 s, login file and password untouched. The owner tests
   the form on the panel before the next image build.
 
+## Handover (session closed 2026-09-03)
+
+Start here in a new session. Everything below is the state at close.
+
+### Where things are
+
+| What | Where | State |
+|---|---|---|
+| Daemon work (buckets 0–9) | jsonrpc-tcp-srv, branch `m2m-extension` (latest docs commit after `00568ac`) | complete, all suites green, ASan/TSan clean |
+| Launcher IOT-Agent screen | micropanel-touch `main` (`a45f982` first release, `0ea6dbf` second round, then the button-label fix) | complete, 62/62 host tests |
+| Image packaging | misc-tools `main` (`e27275b`, `75fab06`, `4e8b5a8`) | hook pins jsonrpc-tcp-srv branch `m2m-extension` |
+| Pi 4 (192.168.1.197, panel luckfox-ctp) | image **00.53**, slot A | runs the owner's real account (`home@remotekit...`), online |
+| Pi tmpfs overlay | launcher/broker/handlers from micropanel-touch `main` head, unit with `ConditionPathExists` | **lost on reboot**: a reboot reverts to 00.53 (old screen, unit without the marker condition) |
+| 72 h soak | host docker container `xmproxy-soak` + `tests/local/soak/` (client.pid, chaos.pid) against Snikket with `aibot` | running since 2026-09-03 10:12 UTC; report due after 2026-09-06 10:12 UTC |
+
+### Remaining tasks
+
+1. **Build image 00.54** once the owner is happy with the tmpfs test:
+   `sudo ./build-image.sh --board=micropanel-touch --variant=luckfox-ctp --version=00.54 --layout=ab --app-ref=main --payload`
+   in misc-tools, then on the Pi
+   `sudo sh -c 'exec ab-system-update stdin < /tmp/x.mpupdate'` (copy the
+   payload to `/tmp` first; there is no `status` verb; the candidate commits
+   itself after 30 s of health). This image picks up the
+   `ConditionPathExists` unit and the second-round screen.
+2. **Final soak report** after 2026-09-06 10:12 UTC:
+   `tests/local/soak/report.py` → `docs/soak-report.md`, then finish
+   `docs/release-notes.md`. Stop the client and chaos script by their PIDs
+   and remove the `xmproxy-soak` container afterwards.
+3. **Dedicated bot account for the Pi**: the Pi currently uses the owner's
+   own account; `aibot` is busy with the soak. The `adminbuddy:` line on the
+   Pi is still the seeded placeholder, so no admin exists yet: set the admin
+   account on the screen's Advanced panel (or grant roles through the ACL
+   file).
+4. **Tag a release** of jsonrpc-tcp-srv and point the misc-tools hook at the
+   tag instead of the branch (`hooks.txt`, `hooks-luckfox-ctp.txt`).
+5. Android app: separate, fresh session (see `prd.md`).
+
+### Known issues and findings
+
+- **Fixed at close, not yet in an image**: after Disconnect → leave → return
+  → Connect (empty password, saved account) → leave → return, the LED was
+  green but the button read "Connect". Cause: the Connect/Disconnect label
+  state (`iot_agent_button_is_disconnect_`) outlived the screen and the
+  relabel was skipped on the next visit. Fixed in micropanel-touch `main`
+  (commit after `0ea6dbf`, "relabel the button on every visit") with a
+  headless regression test; deployed to the Pi's tmpfs, so it is live until
+  the next reboot and will be in 00.54.
+- `tools/cross-build.sh --deploy` fails at the ssh step because the Pi's host
+  key changed after reimaging and the script honours `~/.ssh/known_hosts`.
+  Either run `ssh-keygen -R 192.168.1.197` once (owner's file) or repeat the
+  script's install block by hand with `-o UserKnownHostsFile=/dev/null`
+  (what this session did).
+- The login parser splits lines on whitespace, so passwords with spaces can
+  never be used from the panel (the validator refuses them with a message).
+  A quoting rule in the parser would lift that; text-command behaviour must
+  stay unchanged.
+- The daemon's `get_online_status` reports `online`/`offline` only; the
+  screen infers "Agent not running" from a refused TCP connect. A richer
+  status (last error, connecting since, account in use) would make the
+  screen's hints exact instead of generic.
+- The hook builds gloox from source on every image build (~25 min total);
+  caching the gloox build in the workspace would cut most of it.
+
+### Ideas for later (owner's list plus session suggestions)
+
+- Network → Status: show the agent's account and state so nobody needs to
+  open the IOT-Agent screen to see it.
+- Probe the credentials before restarting the agent, so a typo never takes a
+  working session down (the daemon's `probe_account` path exists).
+- A "Reconnect" action while connected, for server-side changes.
+- Show the admin account and roster size on the screen once connected.
+- BOSH: the Advanced panel writes `bosh:`/`boshurl:`/`boshhost:`; it was
+  tested through the handler and validator, not against a live BOSH
+  endpoint. Test once against the owner's Snikket (`https://<host>:5281/http-bind`
+  or the reverse-proxied `/http-bind`).
+- Custom port: written as `port:`; the LAN Prosody test used the default
+  5222. Verify once with a non-default port.
+- Password field: the eye reveal, cleared on submit and on leaving, is the
+  Wi-Fi screen's behaviour; consider a "last changed" hint instead of an
+  empty field so the owner knows a password is stored.
+- The `disabled` marker is honoured by the unit only; `xmproxy-seed` and the
+  A/B health hook do not look at it, which is correct (a deliberately
+  stopped agent must not fail an update's health check) but worth keeping in
+  mind if `AB_HEALTH_UNITS` ever lists `xmproxysrv.service`.
+
 ## Proposed additions (not yet scheduled, owner to decide)
 
 Raised at the bucket 0 checkpoint. Each names the bucket it would join.
