@@ -43,8 +43,23 @@ void EvntHandler::subscribe_peer(Peer &peer, bool quiet) {
     return; // the SMS service belongs to the legacy GSM feature set
 #endif
   int token = -1;
-  SUBSCRIBE_EVENT("127.0.0.1", peer.port, &token, peer.port, -1,
-                  XMPROXY_JSON_PORT_NUMBER);
+  {
+    // same RPC as the library's SUBSCRIBE_EVENT macro, but a refused
+    // duplicate (already subscribed) or an absent peer is normal here and
+    // must not print a line every period
+    ADJsonRpcClient Client;
+    if (Client.rpc_server_connect("127.0.0.1", peer.port) == 0) {
+      if (Client.set_three_int_get_one_int(
+              (char *)RPCMGR_RPC_EVENT_SUBSCRIBE,
+              (char *)RPCMGR_RPC_EVENT_ARG_CLTTOK, peer.port,
+              (char *)RPCMGR_RPC_EVENT_ARG_PORT, XMPROXY_JSON_PORT_NUMBER,
+              (char *)RPCMGR_RPC_EVENT_ARG_EVENTNUM, -1,
+              (char *)RPCMGR_RPC_EVENT_ARG_SRVTOK,
+              &token) != RPC_SRV_RESULT_SUCCESS)
+        token = -1; // refused: already subscribed, or peer without events
+      Client.rpc_server_disconnect();
+    }
+  }
   if (token != -1) {
     if (peer.active && peer.srvToken != token)
       XMLOG_WRN("events: %s restarted, re-subscribed (token %d -> %d)",

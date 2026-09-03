@@ -334,6 +334,18 @@ Progress (2026-09-03)
   assertions, persistence and capability rows; a real image build was
   started to measure the size limits.
 
+- Image build (2026-09-03): the `misc-tools` build of
+  `micropanel-touch`/`luckfox-ctp` 00.52 with the xmproxy hook succeeded on
+  the second attempt (first attempt: hook-list variables are expanded from
+  the builder environment, now literal; a bare `-lgloox` link that only
+  worked with a system gloox, now pkg-config flags). Slimmed rootfs 768 MiB
+  against the 960 MiB ceiling, apps extension 1280 MB sufficient. Payload
+  streamed to the owner's Pi 4 (00.51, slot A) through
+  `ab-system-update stdin`; the Pi rebooted into slot B, committed 00.52,
+  `xmproxy-seed`, `sysmgr` and `xmproxysrv` enabled and running, account and
+  `/data/xmproxy` tree as designed, binary linked against the OpenSSL gloox.
+  The daemon waits for real credentials in `/data/xmproxy/etc/xmpp-login.txt`.
+
 Acceptance
 - S1, S2 and S3 measured and recorded in `docs/soak-report.md`.
 
