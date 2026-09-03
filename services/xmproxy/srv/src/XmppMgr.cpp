@@ -18,6 +18,7 @@ using namespace std;
 // supported commands over xmpp-channel
 XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
     {
+#ifdef USE_LEGACY_GSM
         {true, EXMPP_CMD_GSM_MODEM_IDENT, "gsmcheck", "",
          EXMPP_USER_ACCESS_READWRITE},
         {true, EXMPP_CMD_SMS_LIST_UPDATE, "smsupdate", "",
@@ -35,9 +36,12 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
         {true, EXMPP_CMD_DIAL_USSD, "dialussd", "<ussd-code>",
          EXMPP_USER_ACCESS_READWRITE},
         {true, EXMPP_CMD_GET_USSD, "readussd", "", EXMPP_USER_ACCESS_READWRITE},
+#endif // USE_LEGACY_GSM
         {true, EXMPP_CMD_FMW_GET_VERSION, "version", "",
          EXMPP_USER_ACCESS_READONLY},
+#ifdef USE_LEGACY_GSM
         {true, EXMPP_CMD_FMW_UPDATE, "sysupdate", "", EXMPP_USER_ACCESS_ADMIN},
+#endif // USE_LEGACY_GSM
         {true, EXMPP_CMD_FMW_REBOOT, "reboot", "", EXMPP_USER_ACCESS_ADMIN},
         {true, EXMPP_CMD_FMW_POWEROFF, "poweroff", "", EXMPP_USER_ACCESS_ADMIN},
         {true, EXMPP_CMD_FMW_UPTIME, "uptime", "", EXMPP_USER_ACCESS_READONLY},
@@ -63,8 +67,10 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
                                       // later)
         {true, EXMPP_CMD_GPIO, "gpio", "<gpio_num> [sts(0/1)]",
          EXMPP_USER_ACCESS_READONLY},
+#ifdef USE_LEGACY_GSM
         {true, EXMPP_CMD_GSM_EVENT_NOTIFY, "eventgsm", "<sts[0/1]>",
          EXMPP_USER_ACCESS_READONLY},
+#endif // USE_LEGACY_GSM
         {true, EXMPP_CMD_GPIO_EVENT_NOTIFY, "eventgpio",
          "<gpio_num> [sts(0/1)]", EXMPP_USER_ACCESS_READONLY},
         {true, EXMPP_CMD_ALIAS, "alias", "name=cmd",
@@ -277,6 +283,7 @@ void XmppMgr::SetDebugLog(bool log) {
   XmppProxy.SetDebugLog(log);
 }
 void XmppMgr::SetUSBGsmSts(bool sts) {
+#ifdef USE_LEGACY_GSM
   int total_cmds = sizeof(xmproxy_cmd_table) / sizeof(XMPROXY_CMD_TABLE);
   for (int i = 0; i < total_cmds; i++) {
     switch (xmproxy_cmd_table[i].cmd) {
@@ -298,6 +305,9 @@ void XmppMgr::SetUSBGsmSts(bool sts) {
       break;
     }
   }
+#else
+  (void)sts; // GSM commands are not compiled in (WITH_LEGACY_GSM=OFF)
+#endif
 }
 /* ------------------------------------------------------------------------- */
 void XmppMgr::SetAiAgentUrl(std::string url) {
@@ -344,7 +354,9 @@ void XmppMgr::SetDockerCmdGroupSts(bool sts) {
     case EXMPP_CMD_FMW_RESET_HOSTNAME:
     case EXMPP_CMD_FMW_POWEROFF:
     case EXMPP_CMD_SHUTDOWN:
+#ifdef USE_LEGACY_GSM
     case EXMPP_CMD_FMW_UPDATE:
+#endif
     case EXMPP_CMD_FMW_REBOOT:
       if (xmproxy_cmd_table[i].cmdsts ==
           true) // if default is disabled, then dont enable it
@@ -611,6 +623,7 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   }
   XmppCmdEntry cmd(cmdcmdMsg, sender); // handlers take the sender from here
   switch (cmdType) {
+#ifdef USE_LEGACY_GSM
   case EXMPP_CMD_SMS_DELETE_ALL:
     res = proc_cmd_sms_deleteall(cmdcmdMsg, returnval, sender);
     break; // inProg
@@ -629,9 +642,11 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_SMS_GET_TOTAL:
     res = proc_cmd_sms_get_total(cmdcmdMsg, returnval);
     break;
+#endif // USE_LEGACY_GSM
   case EXMPP_CMD_FMW_GET_VERSION:
     res = proc_cmd_fmw_get_version(cmdcmdMsg, returnval);
     break;
+#ifdef USE_LEGACY_GSM
   case EXMPP_CMD_FMW_UPDATE:
     res = proc_cmd_fmw_update(cmdcmdMsg, returnval, sender);
     break; // inProg
@@ -641,6 +656,7 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_FMW_UPDATE_RES:
     res = proc_cmd_fmw_update_res(cmdcmdMsg, returnval);
     break;
+#endif // USE_LEGACY_GSM
   case EXMPP_CMD_FMW_REBOOT:
     res = proc_cmd_fmw_reboot(cmdcmdMsg, returnval, sender);
     break; // inProg
@@ -659,6 +675,7 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_FMW_RESET_HOSTNAME:
     res = proc_cmd_fmw_set_default_hostname(cmdcmdMsg);
     break;
+#ifdef USE_LEGACY_GSM
   case EXMPP_CMD_DIAL_VOICE:
     res =
         proc_cmd_dial_voice(cmdcmdMsg, returnval, (char *)"dial_voice", sender);
@@ -670,12 +687,15 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_GET_USSD:
     res = proc_cmd_get_ussd(cmdcmdMsg, returnval);
     break;
+#endif // USE_LEGACY_GSM
   case EXMPP_CMD_DEBUG_LOG_STS:
     res = proc_cmd_logsts(cmdcmdMsg, returnval);
     break;
+#ifdef USE_LEGACY_GSM
   case EXMPP_CMD_GSM_MODEM_IDENT:
     res = proc_cmd_gsm_modem_identify(cmdcmdMsg, returnval, sender);
     break; // inProg
+#endif     // USE_LEGACY_GSM
   case EXMPP_CMD_LOG_UPDATE:
     res = proc_cmd_log_list_update(cmdcmdMsg, returnval, sender);
     break; // inProg
@@ -691,9 +711,11 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_GPIO:
     res = proc_cmd_gpio(cmdcmdMsg, returnval);
     break;
+#ifdef USE_LEGACY_GSM
   case EXMPP_CMD_GSM_EVENT_NOTIFY:
     res = proc_cmd_event_gsm(cmdcmdMsg, sender, returnval);
     break;
+#endif // USE_LEGACY_GSM
   case EXMPP_CMD_GPIO_EVENT_NOTIFY:
     res = proc_cmd_event_gpio(cmdcmdMsg, sender, returnval);
     break;
@@ -1430,6 +1452,7 @@ RPC_SRV_RESULT XmppMgr::SendMessage(std::string msg) {
   return RPC_SRV_RESULT_SUCCESS;
 }
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_sms_deleteall(std::string msg,
                                                std::string &returnval,
                                                std::string sender) {
@@ -1446,15 +1469,19 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sms_deleteall(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_BBOXSMS, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_sms_delete(std::string msg) {
   return RPC_SRV_RESULT_FEATURE_NOT_AVAILABLE;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_sms_get(std::string msg,
                                          std::string &returnval) {
   std::string cmd, cmdArg;
@@ -1480,7 +1507,9 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sms_get(std::string msg,
   Client.rpc_server_disconnect();
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_sms_send(std::string msg,
                                           std::string &returnval,
                                           std::string sender) {
@@ -1511,11 +1540,13 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sms_send(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_BBOXSMS, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_sms_list_update(std::string msg,
                                                  std::string &returnval,
                                                  std::string sender) {
@@ -1532,11 +1563,13 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sms_list_update(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_BBOXSMS, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_sms_get_total(std::string msg,
                                                std::string &returnval) {
   char temp_str[255];
@@ -1551,6 +1584,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sms_get_total(std::string msg,
   returnval = temp_str;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_get_version(std::string msg,
                                                  std::string &returnval) {
@@ -1571,6 +1605,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_get_version(std::string msg,
   return result;
 }
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update(std::string msg,
                                             std::string &returnval,
                                             std::string sender) {
@@ -1647,12 +1682,13 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update(std::string msg,
     if (result == RPC_SRV_RESULT_IN_PROG)
       AccessAsyncTaskList(atoi(temp_str), ADCMN_PORT_SYSMGR, true, &xmptid,
                           sender);
-    sprintf(temp_str, "%d", xmptid);
+    snprintf(temp_str, sizeof(temp_str), "%d", xmptid);
     returnval += temp_str;
   }
   Client.rpc_server_disconnect();
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_reboot(std::string msg,
                                             std::string &returnval,
@@ -1675,7 +1711,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_reboot(std::string msg,
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(temp_str), ADCMN_PORT_SYSMGR, true, &xmptid,
                         sender);
-  sprintf(temp_str, "%d", xmptid);
+  snprintf(temp_str, sizeof(temp_str), "%d", xmptid);
   returnval += temp_str;
   return result;
 }
@@ -1697,11 +1733,12 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_poweroff(std::string msg,
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(temp_str), ADCMN_PORT_SYSMGR, true, &xmptid,
                         sender);
-  sprintf(temp_str, "%d", xmptid);
+  snprintf(temp_str, sizeof(temp_str), "%d", xmptid);
   returnval += temp_str;
   return result;
 }
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update_sts(std::string msg,
                                                 std::string &returnval) {
   // 00:40:37.476-->{ "jsonrpc": "2.0", "method": "get_async_task", "id": 0 }
@@ -1725,7 +1762,9 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update_sts(std::string msg,
     returnval = "Busy";
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update_res(std::string msg,
                                                 std::string &returnval) {
   // 01:02:29.609-->{ "jsonrpc": "2.0", "method": "get_rpc_req_status",
@@ -1739,7 +1778,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update_res(std::string msg,
       0)
     return RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR;
   char tID[255];
-  sprintf(tID, "%d", LastFmwUpdateTaskID);
+  snprintf(tID, sizeof(tID), "%d", LastFmwUpdateTaskID);
   RPC_SRV_RESULT result = Client.get_string_type_with_string_para(
       (char *)"get_rpc_req_status", (char *)"taskId", tID, tRes,
       (char *)"taskStatus");
@@ -1747,6 +1786,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_update_res(std::string msg,
   returnval = tRes;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_uptime(std::string msg,
                                             std::string &returnval) {
@@ -1770,7 +1810,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_uptime(std::string msg,
   int hrs = atoi(str_uptm);
   hrs /= 3600;
   char hrs_str[255];
-  sprintf(hrs_str, "%d", hrs);
+  snprintf(hrs_str, sizeof(hrs_str), "%d", hrs);
   // returnval=str_uptm;
   // returnval+=" Sec";
   returnval = hrs_str;
@@ -1944,6 +1984,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_set_default_hostname(std::string msg) {
   return result;
 }
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_dial_voice(std::string msg,
                                             std::string &returnval,
                                             char *rpc_cmd, std::string sender) {
@@ -1974,11 +2015,13 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_dial_voice(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_BBOXSMS, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_ussd(std::string msg,
                                           std::string &returnval) {
   char temp_str[255];
@@ -1993,6 +2036,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_get_ussd(std::string msg,
   returnval = temp_str;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_logsts(std::string msg,
                                         std::string &returnval) {
@@ -2034,6 +2078,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_logsts(std::string msg,
   }
 }
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_gsm_modem_identify(std::string msg,
                                                     std::string &returnval,
                                                     std::string sender) {
@@ -2050,10 +2095,11 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_gsm_modem_identify(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_BBOXSMS, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
+#endif // USE_LEGACY_GSM
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_log_list_update(std::string msg,
                                                  std::string &returnval,
@@ -2071,7 +2117,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_log_list_update(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_SYSMGR, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
@@ -2115,6 +2161,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_log_get_line(std::string msg,
   return result;
 }
 /* ------------------------------------------------------------------------- */
+#ifdef USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_event_gsm(std::string msg, std::string sender,
                                            std::string &returnval) {
   std::string cmd, cmdArg;
@@ -2156,6 +2203,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_event_gsm(std::string msg, std::string sender,
   return RPC_SRV_RESULT_SUCCESS;
 }
 
+#endif // USE_LEGACY_GSM
 RPC_SRV_RESULT XmppMgr::proc_cmd_event_gpio(std::string msg, std::string sender,
                                             std::string &returnval) {
   std::string cmd, cmdArg, cmdArgVal;
@@ -2428,7 +2476,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_buddy_list(std::string msg,
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::GpioEventCallback(int evntNum, int evntArg) {
   char msg[255];
-  sprintf(msg, "eventgpio %d", evntArg); // prepare event message
+  snprintf(msg, sizeof(msg), "eventgpio %d", evntArg); // prepare event message
   std::string evntStr(msg);
   std::vector<EventSubscrEntry>::iterator it;
   for (it = myEventList.begin(); it != myEventList.end(); it++) {
@@ -2466,9 +2514,9 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_shellcmd(std::string msg,
       0)
     return RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR;
   if (cmdtype == EXMPP_CMD_SHELLCMD_TRIG)
-    sprintf(rpccmd, "run_shellcmdtrig");
+    snprintf(rpccmd, sizeof(rpccmd), "run_shellcmdtrig");
   else
-    sprintf(rpccmd, "run_shellcmd");
+    snprintf(rpccmd, sizeof(rpccmd), "run_shellcmd");
 
   RPC_SRV_RESULT result = Client.set_single_string_get_single_string_type(
       rpccmd, (char *)"command", (char *)destArg.c_str(), (char *)"taskId",
@@ -2479,7 +2527,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_shellcmd(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_SYSMGR, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
@@ -2525,7 +2573,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_devident(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_SYSMGR, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
@@ -2547,7 +2595,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_xmpshutdown(std::string msg,
   int xmptid = -1;
   if (result == RPC_SRV_RESULT_IN_PROG)
     AccessAsyncTaskList(atoi(tID), ADCMN_PORT_XMPROXY, true, &xmptid, sender);
-  sprintf(tID, "%d", xmptid);
+  snprintf(tID, sizeof(tID), "%d", xmptid);
   returnval += tID;
   return result;
 }
@@ -2638,7 +2686,7 @@ RPC_SRV_RESULT XmppMgr::hostname_to_ip(char *hostname, char *ip) {
   addr_list = (struct in_addr **)he->h_addr_list;
   for (i = 0; addr_list[i] != NULL; i++) {
     // Return the first one;
-    strcpy(ip, inet_ntoa(*addr_list[i]));
+    snprintf(ip, 16, "%s", inet_ntoa(*addr_list[i])); // dotted IPv4 fits 16
     return RPC_SRV_RESULT_SUCCESS;
   }
   return RPC_SRV_RESULT_FAIL;

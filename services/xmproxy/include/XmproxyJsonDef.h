@@ -7,13 +7,6 @@
 typedef enum EJSON_XMPROXY_RPC_TYPES_T {
   EJSON_XMPROXY_RPC_GET_ASYNCTASK = 0,
   EJSON_XMPROXY_RPC_SMS_DELETE_ALL,
-  // EJSON_XMPROXY_RPC_SMS_DELETE,
-  // EJSON_XMPROXY_RPC_SMS_TOTAL_GET,
-  // EJSON_XMPROXY_RPC_SMS_GET,
-  // EJSON_XMPROXY_RPC_SMS_SEND,
-  // EJSON_XMPROXY_RPC_SMS_LIST_UPDATE,
-  // EJSON_XMPROXY_RPC_SMS_IDENTIFY_DEV, //check if modem device is detected
-  // correctly
   EJSON_XMPROXY_RPC_GET_ONLINE_STATUS,
   EJSON_XMPROXY_RPC_SET_ONLINE_STATUS, // via rpc, force to go offline
   EJSON_XMPROXY_RPC_SET_SEND_MESSAGE,  // send xmpp message to clients from
@@ -31,9 +24,8 @@ typedef enum EJSON_XMPROXY_RPC_TYPES_T {
 #define XMPROXY_RPC_ASYNCTASK_GET "get_async_task"
 #define XMPROXY_RPC_ASYNCTASK_ARG "task"
 #define XMPROXY_RPC_ASYNCTASK_ARG_TABL                                         \
-  {                                                                            \
-    "listUpdate", "devIdent", "deleteAll", "none", "none", "\0"                \
-  } // show unknown as none
+  {"listUpdate", "devIdent", "deleteAll", "none", "none", "\0"}
+  // show unknown as none
 typedef enum XMPROXY_ASYNCTASK_TYPE_T {
   XMPROXY_ASYNCTASK_LIST_UPDATE,
   XMPROXY_ASYNCTASK_IDENTIFY_DEV,
@@ -45,26 +37,6 @@ typedef struct XMPROXY_ASYNCTASK_PACKET_T {
   XMPROXY_ASYNCTASK_TYPE task;
 } XMPROXY_ASYNCTASK_PACKET;
 /* ------------------------------------------------------------------------- */
-// EJSON_SMARTEYE_RPC_SMS_DELETE_ALL=0,
-// EJSON_SMARTEYE_RPC_SMS_GET,
-// EJSON_SMARTEYE_RPC_SMS_SEND,
-/*#define BBOXSMS_RPC_SMS_DELETE_ALL    "delete_all_sms"
-#define BBOXSMS_RPC_SMS_DELETE        "delete_sms"
-#define BBOXSMS_RPC_SMS_TOTAL_GET     "get_total_sms"
-#define BBOXSMS_RPC_SMS_GET           "get_sms"
-#define BBOXSMS_RPC_SMS_ARG_INDX      "index"
-#define BBOXSMS_RPC_SMS_ARG_MSG       "message"
-#define BBOXSMS_RPC_SMS_ARG_TOTAL     "msgcount"
-#define BBOXSMS_RPC_SMS_SEND          "send_sms"
-#define BBOXSMS_RPC_SMS_LIST_UPDATE   "update_sms_list"
-#define BBOXSMS_RPC_SMS_IDENTIFY_DEV  "identify_dev"
-typedef struct BBOXSMS_SMS_PACKET_T
-{
-        int total_sms;
-        int index;
-        char sms[1024];
-        int taskID;
-}BBOXSMS_SMS_PACKET;*/
 /* ------------------------------------------------------------------------- */
 // EJSON_XMPROXY_RPC_GET_ONLINE_STATUS (get_online_status)
 // EJSON_XMPROXY_RPC_SET_ONLINE_STATUS (set_online_status)
@@ -72,7 +44,7 @@ typedef struct BBOXSMS_SMS_PACKET_T
 #define XMPROXY_RPC_ONLINE_STATUS_SET "set_online_status"
 #define XMPROXY_RPC_ONLINE_STATUS_ARG "status"
 #define XMPROXY_RPC_ONLINE_STATUS_ARG_TABL                                     \
-  { "online", "offline", "unknown", "none", "\0" }
+  {"online", "offline", "unknown", "none", "\0"}
 typedef enum XMPROXY_ONLINESTS_TYPE_T {
   XMPROXY_ONLINESTS_ONLINE,
   XMPROXY_ONLINESTS_OFFLINE,
@@ -119,7 +91,7 @@ typedef struct XMPROXY_CMN_DATA_CACHE_T {
   XMPROXY_CMN_DATA_CACHE_T() {
     AsyncCmdInProgress = EJSON_XMPROXY_RPC_NONE;
   }; // initialize variables here
-  ~XMPROXY_CMN_DATA_CACHE_T(){};
+  ~XMPROXY_CMN_DATA_CACHE_T() {};
 } XMPROXY_CMN_DATA_CACHE;
 /* ------------------------------------------------------------------------- */
 typedef struct XMPROXY_INBOX_PACKET_T {

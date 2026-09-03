@@ -45,12 +45,9 @@ using namespace std;
 // #define BRBOX_SYS_CONFIG_FILE_PATH "/boot/sysconfig.txt"
 #define BRBOX_SYS_CONFIG_FILE_PATH "/etc/sysconfig.txt"
 #define BBOXSMS_SERVER_ADDR "127.0.0.1"
-// #define EXMPP_CMD_TABL
-// {"smsdeleteall","smsdelete","smsget","smssend","smsupdate","smstotal","fmwver","fmwupdt","fmwupsts","fmwupres","reboot","uptime","hostname","myip","resethostname","dialvoice","dialussd","readussd","logsts","gsmcheck","logupdate","logcount","logmsg","unknown","none","\0"}
-// #define EXMPP_CMD_TABL_HELP
-// {"","<zero_based_index>","<zero_based_index>","<phone-num>
-// <msg>","","","","<filename>","","","","","","","","<phone-num>","<ussd-code>","","<port>
-// [sts]","","","","<index>","unknown","none","\0"}
+// legacy GSM/SMS/USSD and firmware-update commands exist only with the
+// CMake option WITH_LEGACY_GSM (default OFF); their enum values stay so that
+// the table order is stable
 
 typedef enum EXMPP_CMD_TYPES_T {
   EXMPP_CMD_SMS_DELETE_ALL = 0,

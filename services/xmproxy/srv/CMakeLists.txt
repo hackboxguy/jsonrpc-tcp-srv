@@ -13,6 +13,7 @@ set(LIB_ADCOMMN AdCmn)                   # Common library
 # Options
 option(WITH_CXMPP_LIB "Link with libstrophe XMPP C library" OFF)
 option(WITH_AI_BOT "Link with cpp-httplib" OFF)
+option(WITH_LEGACY_GSM "GSM/SMS/USSD and firmware-update chat commands of the original brbox product" OFF)
 option(AUTO_GIT_VERSION "Automatically include Git version" ON)  # Use Git instead of SVN
 option(INSTALL_MY_HEADERS "Install header files" ON)
 
@@ -22,6 +23,9 @@ if(WITH_CXMPP_LIB)
 endif()
 if(WITH_AI_BOT)
   add_definitions(-DUSE_AI_BOT)
+endif()
+if(WITH_LEGACY_GSM)
+  add_definitions(-DUSE_LEGACY_GSM)
 endif()
 
 # Define the project
@@ -90,48 +94,20 @@ if(WITH_AI_BOT)
   target_include_directories(xmproxysrv PRIVATE ${cpp-httplib_SOURCE_DIR})
 endif()
 
-# Specify component's dependencies
+# Specify component's dependencies (the XMPP library is the only variable part)
 if(WITH_CXMPP_LIB)
-  if(WITH_AI_BOT)
-    target_link_libraries(${COMPONENT_NAME} PRIVATE
-      ${LIB_ADCOMMN}
-      ${LIB_ADSTTNG}
-      json-c
-      pthread
-      rt
-      strophe
-    )
-  else()
-    target_link_libraries(${COMPONENT_NAME} PRIVATE
-      ${LIB_ADCOMMN}
-      ${LIB_ADSTTNG}
-      json-c
-      pthread
-      rt
-      strophe
-    )
-  endif()
+  set(XMPP_LIBRARY strophe)
 else()
-  if(WITH_AI_BOT)
-    target_link_libraries(${COMPONENT_NAME} PRIVATE
-      ${LIB_ADCOMMN}
-      ${LIB_ADSTTNG}
-      json-c
-      pthread
-      rt
-      gloox
-    )
-  else()
-    target_link_libraries(${COMPONENT_NAME} PRIVATE
-      ${LIB_ADCOMMN}
-      ${LIB_ADSTTNG}
-      json-c
-      pthread
-      rt
-      gloox
-    )
-  endif()
+  set(XMPP_LIBRARY gloox)
 endif()
+target_link_libraries(${COMPONENT_NAME} PRIVATE
+  ${LIB_ADCOMMN}
+  ${LIB_ADSTTNG}
+  json-c
+  pthread
+  rt
+  ${XMPP_LIBRARY}
+)
 
 # Install the binary and headers
 file(GLOB INCFILES "${INC_SRVCOMMN}/*.*")

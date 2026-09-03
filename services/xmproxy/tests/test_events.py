@@ -126,7 +126,7 @@ async def main():
         t0 = time.monotonic()
         await admin.ask("botname renamed-bot")
         drain(admin)
-        ev = await events(admin, 12, "name")
+        ev = await events(admin, 20, "name")  # interval 5 s, generous under sanitizers
         check("event_on_change", len(ev) == 1 and ev[0].get("value") == "renamed-bot", "%.1fs %r" % (time.monotonic() - t0, ev))
         # get_subscriptions / persistence
         r = await rpc(admin, "get_subscriptions")

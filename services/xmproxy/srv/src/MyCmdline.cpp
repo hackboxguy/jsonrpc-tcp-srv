@@ -30,7 +30,7 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
   SystemConfig = "";
   LogLevel = "";
   port_number = portnum;
-  strcpy(version_number, version_str);
+  version_number = version_str;
   CmdlineHelper.attach_helper(this);
   // note:"hviptdln" are already used by the producer class in library
   CmdlineHelper.insert_options_entry((char *)"loginfile", optional_argument,
@@ -96,12 +96,8 @@ MyCmdline::MyCmdline(CMDLINE_HELPER_MODE cmdline_mode, int portnum,
   CmdlineHelper.insert_help_entry(
       (char *)"--subscrfile=filepath      (persisted event subscriptions of "
               "buddies)");
-  strcpy(LoginFilePath, XMPROXY_DEFAULT_LOGIN_FILE_PATH);
+  LoginFilePath = XMPROXY_DEFAULT_LOGIN_FILE_PATH;
   UsbGSMSts = false;
-  AliasListFilePath[0] = '\0';
-  BotNameFilePath[0] = '\0';
-  EvntSubscrListFilePath[0] = '\0';
-  UpdateUrlFilePath[0] = '\0';
 }
 /*****************************************************************************/
 MyCmdline::~MyCmdline() {}
@@ -113,9 +109,9 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
   case XMPROXY_CMDLINE_OPT_LOGIN_FILE:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
         0) // no login filepath passed by user
-      strcpy(LoginFilePath, XMPROXY_DEFAULT_LOGIN_FILE_PATH);
+      LoginFilePath = XMPROXY_DEFAULT_LOGIN_FILE_PATH;
     else
-      strcpy(LoginFilePath, sub_arg);
+      LoginFilePath = sub_arg;
     break;
   case XMPROXY_CMDLINE_OPT_USBGSM_STS:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
@@ -132,23 +128,23 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
   case XMPROXY_CMDLINE_OPT_ALIAS_LIST_FILE:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
         0) // no alias-list filepath passed by user
-      strcpy(AliasListFilePath, "");
+      AliasListFilePath = "";
     else
-      strcpy(AliasListFilePath, sub_arg);
+      AliasListFilePath = sub_arg;
     break;
   case XMPROXY_CMDLINE_OPT_BOT_NAME_FILE:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
         0) // no bot-name filepath passed by user
-      strcpy(BotNameFilePath, "");
+      BotNameFilePath = "";
     else
-      strcpy(BotNameFilePath, sub_arg);
+      BotNameFilePath = sub_arg;
     break;
   case XMPROXY_CMDLINE_OPT_EVNT_SUBSCR_LIST_FILE:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
         0) // no alias-list filepath passed by user
-      strcpy(EvntSubscrListFilePath, "");
+      EvntSubscrListFilePath = "";
     else
-      strcpy(EvntSubscrListFilePath, sub_arg);
+      EvntSubscrListFilePath = sub_arg;
     break;
   case XMPROXY_CMDLINE_OPT_NETINTERFACE:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
@@ -160,9 +156,9 @@ int MyCmdline::parse_my_cmdline_options(int arg, char *sub_arg) {
   case XMPROXY_CMDLINE_OPT_UPDATEURL:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
         0) // no updateurl filepath passed by user
-      strcpy(UpdateUrlFilePath, "");
+      UpdateUrlFilePath = "";
     else
-      strcpy(UpdateUrlFilePath, sub_arg);
+      UpdateUrlFilePath = sub_arg;
     break;
   case XMPROXY_CMDLINE_OPT_AIAGENT:
     if (CmdlineHelper.get_next_subargument(&sub_arg) ==
@@ -238,7 +234,7 @@ int MyCmdline::run_my_autotest(char *ip, int interval_us, int max_loop,
 }
 /*****************************************************************************/
 int MyCmdline::print_my_version() {
-  printf("version - %s\n", version_number);
+  printf("version - %s\n", version_number.c_str());
   return 0;
 }
 // default server port number
@@ -268,30 +264,17 @@ int MyCmdline::get_dev_info(ADCMN_DEV_INFO *pInfo) {
   return CmdlineHelper.get_dev_info(pInfo);
 }
 /*****************************************************************************/
-int MyCmdline::get_login_filepath(char *filepath) {
-  strcpy(filepath, LoginFilePath);
-  return 0;
-}
+std::string MyCmdline::get_login_filepath() { return LoginFilePath; }
 bool MyCmdline::is_usbgsm_connected() { return UsbGSMSts; }
-std::string MyCmdline::get_alias_list_filepath() {
-  std::string path = AliasListFilePath;
-  return path;
-}
-std::string MyCmdline::get_botname_filepath() {
-  std::string path = BotNameFilePath;
-  return path;
-}
+std::string MyCmdline::get_alias_list_filepath() { return AliasListFilePath; }
+std::string MyCmdline::get_botname_filepath() { return BotNameFilePath; }
 std::string MyCmdline::get_evnt_subscr_list_filepath() {
-  std::string path = EvntSubscrListFilePath;
-  return path;
+  return EvntSubscrListFilePath;
 }
 /*****************************************************************************/
 std::string MyCmdline::get_net_interface() { return NetInterface; }
 /*****************************************************************************/
-std::string MyCmdline::get_updateurl_filepath() {
-  std::string updateurl = UpdateUrlFilePath;
-  return updateurl;
-}
+std::string MyCmdline::get_updateurl_filepath() { return UpdateUrlFilePath; }
 /*****************************************************************************/
 std::string MyCmdline::get_ai_agent_url() { return AiAgentUrl; }
 /*****************************************************************************/

@@ -5,14 +5,14 @@
 
 class MyCmdline : public ADCmdlineHelperConsumer, public ADCmnStringProcessor {
   int port_number;
-  char version_number[255];
+  std::string version_number;
   ADCmdlineHelper CmdlineHelper;
-  char LoginFilePath[512];
+  std::string LoginFilePath;
   bool UsbGSMSts;
-  char AliasListFilePath[512];
-  char BotNameFilePath[512];
-  char EvntSubscrListFilePath[512];
-  char UpdateUrlFilePath[1024];
+  std::string AliasListFilePath;
+  std::string BotNameFilePath;
+  std::string EvntSubscrListFilePath;
+  std::string UpdateUrlFilePath;
   std::string NetInterface;
   std::string AiAgentUrl;
   std::string AiModel;
@@ -42,7 +42,7 @@ public:
   bool get_debug_log();
   int get_port_number();
   int get_dev_info(ADCMN_DEV_INFO *pInfo);
-  int get_login_filepath(char *filepath);
+  std::string get_login_filepath();
   bool is_usbgsm_connected();
   std::string get_alias_list_filepath(); // char* filepath);
   std::string get_botname_filepath();

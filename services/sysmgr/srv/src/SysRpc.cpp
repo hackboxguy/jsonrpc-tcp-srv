@@ -270,38 +270,44 @@ RPC_SRV_RESULT SysRpc::ProcessWorkAsync(int cmd, unsigned char *pWorkData) {
     SYSMGR_DEV_OP_PACKET *pPacket;
     pPacket = (SYSMGR_DEV_OP_PACKET *)pWorkData;
     ret_val = process_async_set_devop(pPacket);
-    OBJ_MEM_DELETE(pWorkData);
+    OBJ_MEM_DELETE(pPacket); // typed delete matches the typed new
+    pWorkData = NULL;
   } break;
   case EJSON_SYSMGR_RPC_SET_FMWUPDATE: {
     SYSMGR_FMWUPDATE_PACKET *pPacket;
     pPacket = (SYSMGR_FMWUPDATE_PACKET *)pWorkData;
     ret_val = process_async_set_fmwupdate(pPacket);
-    OBJ_MEM_DELETE(pWorkData);
+    OBJ_MEM_DELETE(pPacket); // typed delete matches the typed new
+    pWorkData = NULL;
   } break;
   case EJSON_SYSMGR_RPC_SET_DOWNLOADFTP:
   case EJSON_SYSMGR_RPC_SET_DOWNLOADTFTP: {
     SYSMGR_DOWNLOAD_FILE_PACKET *pPacket;
     pPacket = (SYSMGR_DOWNLOAD_FILE_PACKET *)pWorkData;
     ret_val = process_async_download_file(pPacket, (EJSON_SYSMGR_RPC_TYPES)cmd);
-    OBJ_MEM_DELETE(pWorkData);
+    OBJ_MEM_DELETE(pPacket); // typed delete matches the typed new
+    pWorkData = NULL;
   } break;
   case EJSON_SYSMGR_RPC_SET_UPDATE_LOG: {
     SYSMGR_LOG_PACKET *pPacket;
     pPacket = (SYSMGR_LOG_PACKET *)pWorkData;
     ret_val = process_async_loglist_update(pPacket);
-    OBJ_MEM_DELETE(pWorkData);
+    OBJ_MEM_DELETE(pPacket); // typed delete matches the typed new
+    pWorkData = NULL;
   } break;
   case EJSON_SYSMGR_RPC_RUN_SHELLCMD: {
     SYSMGR_SHELLCMD_PACKET *pPacket;
     pPacket = (SYSMGR_SHELLCMD_PACKET *)pWorkData;
     ret_val = process_async_run_shellcmd(pPacket);
-    OBJ_MEM_DELETE(pWorkData);
+    OBJ_MEM_DELETE(pPacket); // typed delete matches the typed new
+    pWorkData = NULL;
   } break;
   case EJSON_SYSMGR_RPC_DEVIDENT: {
     SYSMGR_DEVIDENT_PACKET *pPacket;
     pPacket = (SYSMGR_DEVIDENT_PACKET *)pWorkData;
     ret_val = process_async_devident(pPacket);
-    OBJ_MEM_DELETE(pWorkData);
+    OBJ_MEM_DELETE(pPacket); // typed delete matches the typed new
+    pWorkData = NULL;
   } break;
   // case EJSON_SYSMGR_RPC_RUN_SHELLCMDTRIG:
   //	{

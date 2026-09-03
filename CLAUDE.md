@@ -122,21 +122,24 @@ jsonrpc-tcp-srv/
 - Maintain inbox for incoming messages
 - Event subscription management
 
-**Command Categories:**
-- **System**: `uptime`, `reboot`, `poweroff`, `hostname`, `myip`, `devident`
-- **Shell**: `shellcmd`, `shellcmdresp` (execute remote commands)
-- **Network**: `localip` (get local IP addresses)
-- **Buddy Management**: `buddylist`, `buddyadd`, `buddyremove`, `buddysubscribe`
-- **Messaging**: `relaymessage` (send to other buddies)
-- **Display**: `dispclear`, `dispprint`, `dispbklt` (OLED control)
-- **Aliases**: `alias` (create command shortcuts)
-- **Bot Config**: `account`, `botname`
-- **AI Integration**: AI model inference through Ollama
+**Command Categories** (names as in `xmproxy_cmd_table`):
+- **System**: `version`, `uptime`, `reboot`, `poweroff`, `hostname`, `resethostname`, `publicip`, `localip`, `identify`, `xmpshutdown`
+- **Shell**: `shellcmd`, `shellcmdtrig`, `shellcmdresp`
+- **Buddy management**: `buddylist`, `acceptbuddy`, `rejectbuddy`, `subscribe`, `unsubscribe`, `acceptbuddylist`, `relaymsg`
+- **Roles**: `acl`
+- **Manifest and events**: `manifest`, `run`, `watch`, `unwatch`
+- **Display and devices**: `gpio`, `eventgpio`, `sonoff`, `dispclear`, `display`, `dispbklt`
+- **Aliases and bot**: `alias`, `sleep`, `account`, `botname`
+- **Legacy (only with `-DWITH_LEGACY_GSM=ON`)**: `gsmcheck`, `smsupdate`, `smstotal`, `smsget`, `smsdeleteall`, `smssend`, `dialvoice`, `dialussd`, `readussd`, `eventgsm`, `sysupdate`
+- **AI Integration**: chat bodies forwarded to Ollama when `--aiagent` is set
 
 **Command Processing Flow:**
 ```cpp
-onXmppMessage() → ResolveCmdStr() → proc_cmd_*() → send_reply()
+onXmppMessage() → worker queue → expand_command() → run_single_command()
+    → required_role() check → proc_cmd_*() → send_reply()
 ```
+JSON-RPC bodies take `process_json_request()` and `exec` reuses
+`run_single_command()`; manifest controls go through `execute_control()`.
 
 **Location:** [services/xmproxy/srv/src/XmppMgr.cpp](services/xmproxy/srv/src/XmppMgr.cpp)
 
@@ -282,6 +285,7 @@ xmproxysrv [OPTIONS]
   --aiurl=<url>              # AI agent URL
   --aimodel=<model>          # AI model name
   --loglevel=<level>         # error|warn|info|debug (default info)
+  --usbgsm=<0|1>             # legacy GSM modem flag, ignored unless built with WITH_LEGACY_GSM
   --aclfile=<path>           # buddy roles file (admin, operator, viewer)
   --manifest=<path>          # device UI manifest served to apps
   --subscrfile=<path>        # persisted event subscriptions
@@ -306,6 +310,7 @@ plan: `services/xmproxy/docs/prd.md`, `services/xmproxy/docs/plan.md`.
 ```bash
 # Local build
 cmake -H. -BOutput -DCMAKE_INSTALL_PREFIX=/path/to/install -DWITH_AI_BOT=ON
+# add -DWITH_LEGACY_GSM=ON for the GSM/SMS/USSD/sysupdate commands (default OFF)
 cmake --build Output -- install -j$(nproc)
 
 # Cross-compilation for OpenWrt
@@ -569,9 +574,11 @@ typedef enum {
 } EXMPP_CMD_TYPES;
 ```
 
-2. **Add command table entry** in `XmppMgr.cpp`:
+2. **Add command table entry** in `XmppMgr.cpp` (the last column is the
+   minimum role: `EXMPP_USER_ACCESS_ADMIN` = admin, `READWRITE` = operator,
+   `READONLY` = viewer; argument-dependent cases go into `required_role()`):
 ```cpp
-XMPROXY_CMD_TABLE CmdTable[] = {
+XMPROXY_CMD_TABLE xmproxy_cmd_table[] = {
     {true, EXMPP_CMD_MY_NEW_COMMAND, "mynewcmd", "<args>", EXMPP_USER_ACCESS_READWRITE},
 };
 ```
@@ -586,18 +593,15 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_my_new_command(string msg, string& returnval, s
 }
 ```
 
-4. **Wire in command dispatcher**:
+4. **Wire in the dispatcher** (`run_single_command()` in `XmppMgr.cpp`;
+   `ResolveCmdStr()` finds the command in the table by name):
 ```cpp
-EXMPP_CMD_TYPES XmppMgr::ResolveCmdStr(string cmd) {
-    if (cmd == "mynewcmd") return EXMPP_CMD_MY_NEW_COMMAND;
-    // ...
-}
-
-// In main command router
 case EXMPP_CMD_MY_NEW_COMMAND:
-    res = proc_cmd_my_new_command(cmdArg, ResponseMsg, sender);
+    res = proc_cmd_my_new_command(cmdcmdMsg, returnval, sender);
     break;
 ```
+5. Add a golden case to `services/xmproxy/tests/cases.json` and re-record
+   with `run-tests.sh --only <name> --record`; `help` goldens change too.
 
 ### Logging
 

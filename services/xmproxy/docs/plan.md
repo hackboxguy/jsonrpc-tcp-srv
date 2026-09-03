@@ -281,7 +281,19 @@ Acceptance
   help, which is the intended change) and on.
 
 Decisions to verify at checkpoint
-- D12: option default off; whether to delete instead.
+- D12: option default off; whether to delete instead. (confirmed
+  2026-09-03: build option `WITH_LEGACY_GSM`, default OFF.) With it off the
+  GSM, SMS, USSD and `sysupdate` commands and their handlers are not compiled,
+  `--usbgsm` is accepted and ignored, and the SMS service is not probed for
+  events. `help` and `list_commands` no longer show `sysupdate`.
+- Kept as they were: the log commands (disabled in the table since before
+  this work) and the `EXMPP_CMD_*` enum values, so the table order is stable.
+
+Status: done 2026-09-03 on branch `m2m-extension`. Also: the command-line
+parser uses std::string instead of fixed buffers, remaining `sprintf` calls
+in xmproxy are bounded, dead SMS RPC scaffolding is gone, sysmgr's async
+work packets are deleted through their own type, the duplicated CMake link
+branches are one block, and CLAUDE.md matches the code.
 
 ## Bucket 8 — Pi 4 packaging, soak and release
 

@@ -38,6 +38,10 @@ EvntHandler::~EvntHandler() {
 // client token, port and event), so calling this while already subscribed is
 // harmless; after a peer restart it succeeds and yields a fresh token.
 void EvntHandler::subscribe_peer(Peer &peer, bool quiet) {
+#ifndef USE_LEGACY_GSM
+  if (peer.port == EVENT_BBXSMS)
+    return; // the SMS service belongs to the legacy GSM feature set
+#endif
   int token = -1;
   SUBSCRIBE_EVENT("127.0.0.1", peer.port, &token, peer.port, -1,
                   XMPROXY_JSON_PORT_NUMBER);

@@ -148,9 +148,7 @@ int main(int argc, const char *argv[]) {
   RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
                CmdLine.get_emulation_mode());
 
-  char filepath[512];
-  CmdLine.get_login_filepath(filepath);
-  std::string XmpAccountAuthFilePath(filepath);
+  std::string XmpAccountAuthFilePath = CmdLine.get_login_filepath();
   XmpManager.Start(XmpAccountAuthFilePath); // connect the xmpp server
   XmpManager.AttachHeartBeat(
       &AppTimer); // attach 100ms heartbeat to xmpp client manager for sending

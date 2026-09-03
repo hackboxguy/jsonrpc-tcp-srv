@@ -28,6 +28,12 @@ export LD_LIBRARY_PATH=$PWD/Output/install/lib
 
 `Output/` is ignored by git. The test runner does this build for you.
 
+Build options of `services/xmproxy/srv/CMakeLists.txt`: `WITH_AI_BOT`
+(Ollama forwarding, needs cpp-httplib), `WITH_LEGACY_GSM` (GSM, SMS, USSD and
+firmware-update chat commands of the original product, default OFF; the
+runner and the goldens assume OFF), `WITH_CXMPP_LIB` (libstrophe instead of
+gloox, untested here).
+
 ## Run the tests
 
 ```bash
