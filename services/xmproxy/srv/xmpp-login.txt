@@ -17,3 +17,4 @@ adminbuddy: example-buddy@exampleserver
 # fallbackport: 5222
 # fallbackafter: 3
 # primaryprobe: 300
+# heartbeat: 300          seconds between heartbeat events to subscribers (0 disables)

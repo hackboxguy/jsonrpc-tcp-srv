@@ -102,14 +102,17 @@ what the user cannot use.
 - Validation errors name the group and control, for example
   `group 'lights' control 'living': toggle needs 'on' and 'off'`.
 
-## Indicators and the poller (bucket 6)
+## Indicators and the poller
 
-`interval`, `regex` and `match` are declared here and used by bucket 6: the
-daemon runs each indicator's command at its interval and pushes a
-notification to subscribed buddies when the value changes. A command that
-runs asynchronously (`shellcmd`) will have its captured output read through
-`shellcmdresp` after completion, so Domoticz-style status reads work with
-`shellcmd curl ...` aliases.
+`interval`, `regex` and `match` drive the poller (bucket 6): while at least
+one buddy subscribes to a control (or to `*`), the daemon runs its `command`
+at the interval and publishes an `event` notification when the extracted
+value changes. A command that runs asynchronously (`shellcmd`) has its
+captured output read through `shellcmdresp` after completion, so
+Domoticz-style status reads work with `shellcmd curl ...` aliases. The
+poller runs commands with the manifest grant, so a `shellcmd` indicator is
+fine even though the topic is readable by viewers: only the extracted value
+travels. See `protocol.md`, section Events.
 
 ## Samples
 

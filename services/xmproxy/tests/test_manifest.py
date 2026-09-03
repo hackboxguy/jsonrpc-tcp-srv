@@ -78,7 +78,7 @@ async def main():
         # get_manifest as admin
         m = first(await rpc(admin, "get_manifest")).get("result", {})
         ctl = {c["id"]: c for g in m.get("groups", []) for c in g.get("controls", [])}
-        check("manifest_structure", m.get("manifest") == 1 and m.get("device", {}).get("name") == "rig-device" and [g["id"] for g in m["groups"]] == ["status", "actions"] and len(ctl) == 7, repr(m)[:300])
+        check("manifest_structure", m.get("manifest") == 1 and m.get("device", {}).get("name") == "rig-device" and [g["id"] for g in m["groups"]] == ["status", "actions"] and len(ctl) == 10, repr(m)[:300])
         check("manifest_defaults", ctl["blink"]["role"] == "operator" and ctl["who"]["role"] == "viewer" and ctl["restart"]["confirm"] is True and ctl["blink"]["confirm"] is False and ctl["up"]["unit"] == "h" and ctl["led"]["match"] == "1", repr(ctl.get("blink")))
         check("manifest_allowed_admin", all(c["allowed"] for c in ctl.values()))
         # as guest (viewer)
@@ -122,7 +122,7 @@ async def main():
         check("chat_run_alias", r == "return=Success : result=%s" % BOT, r)
         # chat: manifest summary and admin-only subcommands
         r = (await guest.ask("manifest"))[0]
-        check("manifest_summary_viewer", "device rig-device" in r and "controls 7" in r, r)
+        check("manifest_summary_viewer", "device rig-device" in r and "controls 10" in r, r)
         r = (await guest.ask("manifest reload"))[0]
         check("manifest_reload_admin_only", r == "return=ActionBlocked : result=requires admin", r)
         # invalid file: reload fails, previous manifest kept (S6)

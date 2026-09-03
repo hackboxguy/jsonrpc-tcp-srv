@@ -39,8 +39,10 @@ The runner:
 1. builds into `Output/` (skip with `--no-build`),
 2. starts Prosody in Docker on `127.0.0.1:5222` with accounts `bot`,
    `admin` and `guest` on the domain `localhost` (see `tests/rig/`),
-3. starts `sysmgr` (emulation mode) and `xmproxysrv` with the fixtures in
-   `tests/fixtures/`, runtime files in `tests/.run/`,
+3. starts `sysmgr` (emulation mode, with `SYSMGR_EMULATION_SHELL=1` so
+   that shell commands really run while hardware stays emulated) and
+   `xmproxysrv` with the fixtures in `tests/fixtures/`, runtime files in
+   `tests/.run/`,
 4. waits until the bot reports online on its TCP JSON-RPC port 40005,
 5. runs five groups and reports each:
    - chat golden regression (`test_chat_regression.py`, cases in
@@ -57,6 +59,9 @@ The runner:
      role, control grants, toggles, async controls, chat `run`, reload and
      check with an invalid file, validation messages (see
      `docs/manifest.md`),
+   - events (`test_events.py`): subscriptions, initial values, change
+     detection, async shell indicator, `task`, `heartbeat`, `system` topics,
+     chat `watch`/`unwatch` (see `docs/protocol.md`, Events),
    - stress (`test_stress.py`): admin and guest each send 250 commands while
      Prosody is restarted twice; passes only with zero lost or extra replies,
    - failover (`test_failover.py`): primary stopped, bot answers as the
@@ -120,6 +125,12 @@ case in `cases.json`.
 `docs/manifest.md`). The rig copies `tests/fixtures/manifest.json` to
 `.run/manifest.json`; samples for a bare Pi and for Domoticz are in
 `helpers/configs/`.
+
+## Events
+
+`--subscrfile=PATH` persists buddy subscriptions (`jid topic,topic` per
+line). The login key `heartbeat` (seconds, default 300, 0 disables) drives
+the heartbeat topic; the rig uses 5.
 
 ## Roles and the ACL file
 

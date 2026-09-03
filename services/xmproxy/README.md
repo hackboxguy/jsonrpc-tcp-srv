@@ -104,6 +104,10 @@ Apps talk to the bot with JSON-RPC 2.0 in ordinary XMPP message bodies. A body s
 
 A JSON file on the device (`--manifest`, `/xmpp-data/manifest.json` in the Docker image) lists groups of controls: buttons, toggles, indicators and text fields, each mapped to a chat command or alias. Apps fetch it with `get_manifest` and render it; users trigger controls with `exec {"control": "gateopen"}` or, over chat, `run gateopen`. A control's `role` says who may use it, and that grant also covers aliases that would be admin-only when typed, so a family member can press "Open gate" without shell rights. Samples for a bare Pi and for Domoticz are in `helpers/configs/`; the schema is in [docs/manifest.md](docs/manifest.md). `manifest check` and `manifest reload` validate and apply changes without a restart.
 
+## Notifications: the device pushes changes
+
+A buddy or app subscribes to topics (`subscribe {"topics": ["temp", "system", "heartbeat"]}` or, over chat, `watch temp,system`) and receives `event` notifications: indicator values when they change, `online`/`failover`/`failback`/`shutdown` on the `system` topic, completions of other buddies' async commands on `task`, and a periodic `heartbeat` (login key `heartbeat`, default every 5 minutes). Subscriptions persist across restarts (`--subscrfile`, `/xmpp-data/xmpp-subscriptions.txt` in Docker). Details in [docs/protocol.md](docs/protocol.md).
+
 ## BOSH Connection (For Corporate Networks)
 
 If your network blocks XMPP port 5222 but allows HTTPS (port 443), you can use BOSH (Bidirectional-streams Over Synchronous HTTP) to tunnel XMPP traffic over HTTPS.

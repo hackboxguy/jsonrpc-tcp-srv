@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <json-c/json.h>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -116,7 +117,11 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
         {true, EXMPP_CMD_MANIFEST, "manifest", "[reload|check]",
          EXMPP_USER_ACCESS_READONLY}, // summary for all, reload/check admin
         {true, EXMPP_CMD_RUN, "run", "<control-id> [on|off]",
-         EXMPP_USER_ACCESS_READONLY} // control role is checked per control
+         EXMPP_USER_ACCESS_READONLY}, // control role is checked per control
+        {true, EXMPP_CMD_WATCH, "watch", "[<topic,...>]",
+         EXMPP_USER_ACCESS_READONLY}, // subscribe to events / list
+        {true, EXMPP_CMD_UNWATCH, "unwatch", "[<topic,...>]",
+         EXMPP_USER_ACCESS_READONLY} // unsubscribe (all when no topic)
         //{true ,EXMPP_CMD_CHANGE_ADMIN          , "changeadmin"
         //,"[buddyID]"},//only admin-buddy can run this command
 };
@@ -127,7 +132,12 @@ const int xmproxy_cmd_table_size =
 /* ------------------------------------------------------------------------- */
 XmppMgr::XmppMgr() //: AckToken(0)
     : OnFallback(false), PrimaryAvailable(false), ProbeStop(false),
-      ProbeRunning(false), Stopping(false) {
+      ProbeRunning(false), Stopping(false), PollerStop(false),
+      PollerRunning(false) {
+  HeartbeatSec = XMPP_DEFAULT_HEARTBEAT_SEC;
+  heartbeat_period_ms = 0;
+  StartedAt = time(NULL);
+  wasConnected = false;
   FallbackAfter = XMPP_DEFAULT_FALLBACK_AFTER;
   PrimaryProbeSec = XMPP_DEFAULT_PRIMARY_PROBE_SEC;
   PingIntervalSec = XMPP_DEFAULT_PING_INTERVAL_SEC;
@@ -172,6 +182,8 @@ XmppMgr::XmppMgr() //: AckToken(0)
   XmppClientThread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
   probeThreadID = ProbeThread.subscribe_thread_callback(this);
   ProbeThread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
+  pollerThreadID = PollerThread.subscribe_thread_callback(this);
+  PollerThread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
 
   XmppCmdProcessThread.subscribe_thread_callback(this);
   XmppCmdProcessThread.set_thread_properties(THREAD_TYPE_MONOSHOT,
@@ -206,6 +218,21 @@ int XmppMgr::AttachHeartBeat(ADTimer *pTimer) {
 int XmppMgr::timer_notification() {
   if (Stopping)
     return 0;
+  // system topic: online transitions and pending failover/failback events
+  bool nowConnected = XmppProxy.get_connected_status();
+  if (nowConnected && !wasConnected)
+    set_pending_system_event("online");
+  wasConnected = nowConnected;
+  if (nowConnected)
+    emit_system_events();
+  // heartbeat topic (P4)
+  if (HeartbeatSec > 0 && nowConnected) {
+    heartbeat_period_ms += heartbeat_ms;
+    if (heartbeat_period_ms >= HeartbeatSec * 1000) {
+      heartbeat_period_ms = 0;
+      publish("heartbeat", NULL);
+    }
+  }
   sweep_period_ms += heartbeat_ms;
   if (sweep_period_ms >= 10000) { // every 10 s: expire stale async tasks
     sweep_period_ms = 0;
@@ -239,7 +266,9 @@ void XmppMgr::sweep_async_tasks() {
     XMLOG_WRN("async task %d (port %d) timed out after %d s", expired[i].taskID,
               expired[i].srvPort, AsyncTimeoutSec);
     RpcResponseCallback(RPC_SRV_RESULT_TIMEOUT, expired[i].xmppTID,
-                        expired[i].to, expired[i].json, expired[i].reqId);
+                        expired[i].to, expired[i].json, expired[i].reqId,
+                        expired[i].pollControl, expired[i].pollInitialTo,
+                        expired[i].shellOutput);
   }
 }
 /* ------------------------------------------------------------------------- */
@@ -419,6 +448,8 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
 int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
   if (pObj->getID() == probeThreadID)
     return probe_loop();
+  if (pObj->getID() == pollerThreadID)
+    return poll_loop();
   return session_loop();
 }
 void XmppMgr::set_active_jid(const std::string &jid) {
@@ -460,15 +491,17 @@ int XmppMgr::session_loop() {
         useFallback = false;
         failures = 0;
         switched = true;
+        set_pending_system_event("failback");
       } else if (FallbackAccount.configured() && failures >= FallbackAfter) {
         useFallback = !useFallback;
         failures = 0;
         switched = true;
-        if (useFallback)
+        if (useFallback) {
           XMLOG_WRN("xmpp: %d consecutive failures on primary, failing over "
                     "to %s",
                     FallbackAfter, FallbackAccount.user.c_str());
-        else
+          set_pending_system_event("failover");
+        } else
           XMLOG_WRN("xmpp: %d consecutive failures on fallback, trying "
                     "primary %s again",
                     FallbackAfter, PrimaryAccount.user.c_str());
@@ -732,6 +765,12 @@ RPC_SRV_RESULT XmppMgr::run_single_command(const std::string &cmdcmdMsg,
   case EXMPP_CMD_RUN:
     res = proc_cmd_run(cmdcmdMsg, returnval, sender, senderRole);
     break;
+  case EXMPP_CMD_WATCH:
+    res = proc_cmd_watch(cmdcmdMsg, returnval, sender, senderRole);
+    break;
+  case EXMPP_CMD_UNWATCH:
+    res = proc_cmd_unwatch(cmdcmdMsg, returnval, sender);
+    break;
   default:
     break;
   }
@@ -757,8 +796,11 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       process_json_request(cmd);
       continue;
     }
-    CurrentReq.json = false;
-    CurrentReq.reqId = "";
+    if (!cmd.pollControl.empty()) {
+      poll_control(cmd.pollControl, cmd.pollInitialTo);
+      continue;
+    }
+    CurrentReq.clear();
 
     stringstream mystream(cmd.cmdMsg);
     std::string mycmd;
@@ -800,13 +842,46 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
 // reply over xmpp
 RPC_SRV_RESULT XmppMgr::RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID,
                                             std::string to, bool json,
-                                            std::string reqId) {
-  return RpcResponseCallback(result_code_name(taskRes), taskID, to, json,
-                             reqId);
+                                            std::string reqId,
+                                            std::string pollControl,
+                                            std::string pollInitialTo,
+                                            bool shellOutput) {
+  return RpcResponseCallback(result_code_name(taskRes), taskID, to, json, reqId,
+                             pollControl, pollInitialTo, shellOutput);
 }
 RPC_SRV_RESULT XmppMgr::RpcResponseCallback(std::string taskRes, int taskID,
                                             std::string to, bool json,
-                                            std::string reqId) {
+                                            std::string reqId,
+                                            std::string pollControl,
+                                            std::string pollInitialTo,
+                                            bool shellOutput) {
+  if (!pollControl.empty()) {
+    // completion of an asynchronous indicator poll
+    RPC_SRV_RESULT res =
+        (taskRes == "Success") ? RPC_SRV_RESULT_SUCCESS : RPC_SRV_RESULT_FAIL;
+    std::string raw = taskRes;
+    if (shellOutput && res == RPC_SRV_RESULT_SUCCESS) {
+      std::string out;
+      if (proc_cmd_shellcmdresp("shellcmdresp", out, "") ==
+          RPC_SRV_RESULT_SUCCESS)
+        raw = out;
+      else
+        res = RPC_SRV_RESULT_FILE_READ_ERR;
+    }
+    if (taskRes == "Timeout")
+      res = RPC_SRV_RESULT_TIMEOUT;
+    finish_poll(pollControl, pollInitialTo, res, raw);
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  // task topic: subscribers other than the requester learn about it too
+  {
+    json_object *p = json_object_new_object();
+    json_object_object_add(p, "task", json_object_new_int(taskID));
+    json_object_object_add(p, "return",
+                           json_object_new_string(taskRes.c_str()));
+    json_object_object_add(p, "requester", json_object_new_string(to.c_str()));
+    publish("task", p, to);
+  }
   if (json) {
     send_task_notification(to, taskID, taskRes, reqId);
     return RPC_SRV_RESULT_SUCCESS;
@@ -820,10 +895,11 @@ RPC_SRV_RESULT XmppMgr::RpcResponseCallback(std::string taskRes, int taskID,
   return RPC_SRV_RESULT_SUCCESS;
 }
 // RAII function, used for inserting entry or searching for existing entry
-RPC_SRV_RESULT XmppMgr::AccessAsyncTaskList(int tid, int port,
-                                            bool insertEntryFlag, int *xmpptID,
-                                            std::string &sender, bool *json,
-                                            std::string *reqId) {
+RPC_SRV_RESULT
+XmppMgr::AccessAsyncTaskList(int tid, int port, bool insertEntryFlag,
+                             int *xmpptID, std::string &sender, bool *json,
+                             std::string *reqId, std::string *pollControl,
+                             std::string *pollInitialTo, bool *shellOutput) {
   // AsyncTaskList is shared with the event thread and the timeout sweep
   std::lock_guard<std::mutex> lock(asyncMutex);
   if (insertEntryFlag == true) {
@@ -831,6 +907,9 @@ RPC_SRV_RESULT XmppMgr::AccessAsyncTaskList(int tid, int port,
     AyncEventEntry entry(tid, port, XmppTaskIDCounter, sender);
     entry.json = CurrentReq.json; // tagged with the request being served
     entry.reqId = CurrentReq.reqId;
+    entry.pollControl = CurrentReq.pollControl;
+    entry.pollInitialTo = CurrentReq.pollInitialTo;
+    entry.shellOutput = CurrentReq.shellOutput;
     AsyncTaskList.push_back(entry);
     if (xmpptID != NULL)
       *xmpptID = XmppTaskIDCounter;
@@ -848,6 +927,12 @@ RPC_SRV_RESULT XmppMgr::AccessAsyncTaskList(int tid, int port,
       *json = (*it).json;
     if (reqId != NULL)
       *reqId = (*it).reqId;
+    if (pollControl != NULL)
+      *pollControl = (*it).pollControl;
+    if (pollInitialTo != NULL)
+      *pollInitialTo = (*it).pollInitialTo;
+    if (shellOutput != NULL)
+      *shellOutput = (*it).shellOutput;
     // if (find_if(AsyncTaskList.begin(), AsyncTaskList.end(),
     // FindAsyncEventEntry(tid,port)) == AsyncTaskList.end()) 	return
     // RPC_SRV_RESULT_FAIL; erase the entry
@@ -1173,6 +1258,10 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
     }
   } else
     XMLOG_INF("manifest: no --manifest file, get_manifest is not available");
+  Subs.set_file(SubscrFile);
+  Subs.load();
+  if (HeartbeatSec > 0)
+    XMLOG_INF("events: heartbeat every %d s to subscribers", HeartbeatSec);
   LoadEventSubscrList(EventSubscrListFile, &myEventList);
 
   // cout<<"loginfilepath: "<<accountFilePath<<endl;
@@ -1214,6 +1303,10 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
     } else if (key == "primaryprobe:") {
       if (atoi(value.c_str()) >= 5)
         PrimaryProbeSec = atoi(value.c_str());
+    } else if (key == "heartbeat:") {
+      HeartbeatSec = atoi(value.c_str()); // 0 disables, minimum 5 s
+      if (HeartbeatSec > 0 && HeartbeatSec < 5)
+        HeartbeatSec = 5;
     } else {
       bool fb = key.compare(0, 8, "fallback") == 0;
       std::string k = fb ? key.substr(8) : key;
@@ -1287,23 +1380,32 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   XmppClientThread.start_thread();
   if (FallbackAccount.configured())
     ProbeThread.start_thread();
+  PollerThread.start_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::Stop() {
   XMLOG_INF("xmpp: shutdown requested");
   Stopping = true;
+  PollerStop = true;
+  {
+    json_object *p = json_object_new_object();
+    json_object_object_add(p, "event", json_object_new_string("shutdown"));
+    publish("system", p);
+  }
   XmppProxy.setForcedDisconnect();
   ProbeStop = true;
   XmppProxy.disconnect(); // bounded wait for the session to end
   // let the session loop exit by itself before the thread is torn down
   int waited = 0;
-  while ((XmppProxy.is_session_running() || ProbeRunning) && waited < 3000) {
+  while ((XmppProxy.is_session_running() || ProbeRunning || PollerRunning) &&
+         waited < 3000) {
     usleep(100000);
     waited += 100;
   }
   XmppClientThread.stop_thread();
   if (FallbackAccount.configured())
     ProbeThread.stop_thread();
+  PollerThread.stop_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::set_online_status(bool status) {

@@ -98,15 +98,18 @@ void EvntHandler::ReceiveEvent(int cltToken, int evntNum, int evntArg,
     int xmpTID = -1;
     std::string to;
     bool json = false;
-    std::string reqId;
+    std::string reqId, pollControl, pollInitialTo;
+    bool shellOutput = false;
     if (pXmpp->AccessAsyncTaskList(evntArg, cltToken, false, &xmpTID, to, &json,
-                                   &reqId) == RPC_SRV_RESULT_SUCCESS) {
+                                   &reqId, &pollControl, &pollInitialTo,
+                                   &shellOutput) == RPC_SRV_RESULT_SUCCESS) {
       ADJsonRpcClient Client;
       if (Client.rpc_server_connect("127.0.0.1", cltToken) != 0) {
         XMLOG_ERR("events: cannot connect to peer on port %d for task %d",
                   cltToken, evntArg);
         pXmpp->RpcResponseCallback(RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR,
-                                   xmpTID, to, json, reqId);
+                                   xmpTID, to, json, reqId, pollControl,
+                                   pollInitialTo, shellOutput);
         return;
       }
       Client.get_string_type_with_string_para(
@@ -115,7 +118,8 @@ void EvntHandler::ReceiveEvent(int cltToken, int evntNum, int evntArg,
           (char *)ADLIB_RPC_PARM_TASK_STS);
       Client.rpc_server_disconnect();
       std::string finalRes = taskIDResult;
-      pXmpp->RpcResponseCallback(finalRes, xmpTID, to, json, reqId);
+      pXmpp->RpcResponseCallback(finalRes, xmpTID, to, json, reqId, pollControl,
+                                 pollInitialTo, shellOutput);
     } else {
       XMLOG_DBG("events: completion for unknown task %d from port %d", evntArg,
                 cltToken);

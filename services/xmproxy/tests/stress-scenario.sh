@@ -27,10 +27,10 @@ trap cleanup EXIT
 "$HERE/rig/rig.sh" up || exit 1
 stop_daemons; rm -rf "$RUN"; mkdir -p "$RUN"
 cp "$HERE/fixtures/xmpp-alias-list.txt" "$HERE/fixtures/xmpp-botname.txt" "$RUN/"; : > "$RUN/xmpp-evntsubscr.txt"; : > "$RUN/xmpp-acl.txt"; cp "$HERE/fixtures/manifest.json" "$RUN/manifest.json"
-"$INSTALL/bin/sysmgr" --syscfg=docker --emulation >"$RUN/sysmgr.log" 2>&1 & echo $! > "$RUN/sysmgr.pid"; sleep 1
+SYSMGR_EMULATION_SHELL=1 "$INSTALL/bin/sysmgr" --syscfg=docker --emulation >"$RUN/sysmgr.log" 2>&1 & echo $! > "$RUN/sysmgr.pid"; sleep 1
 "$INSTALL/bin/xmproxysrv" --syscfg=docker --port=40005 --loginfile="$HERE/fixtures/xmpp-login.txt" \
   --aliaslist="$RUN/xmpp-alias-list.txt" --botname="$RUN/xmpp-botname.txt" \
-  --evntsubscr="$RUN/xmpp-evntsubscr.txt" --aclfile="$RUN/xmpp-acl.txt" --manifest="$RUN/manifest.json" --iface=lo >"$RUN/xmproxysrv.log" 2>&1 & echo $! > "$RUN/xmproxysrv.pid"
+  --evntsubscr="$RUN/xmpp-evntsubscr.txt" --aclfile="$RUN/xmpp-acl.txt" --manifest="$RUN/manifest.json" --subscrfile="$RUN/xmpp-subscriptions.txt" --iface=lo >"$RUN/xmproxysrv.log" 2>&1 & echo $! > "$RUN/xmproxysrv.pid"
 for i in $(seq 1 30); do
   "$VENV/bin/python" - <<PY 2>/dev/null && break
 import socket,sys

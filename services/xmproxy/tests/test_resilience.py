@@ -89,7 +89,8 @@ async def main():
             os.kill(old, signal.SIGKILL)
             time.sleep(1.0)
             with open(os.path.join(RUN, "sysmgr.log"), "a") as log:
-                proc = subprocess.Popen([sysmgr_bin, "--syscfg=docker", "--emulation"], stdout=log, stderr=subprocess.STDOUT)
+                env = dict(os.environ, SYSMGR_EMULATION_SHELL="1")
+                proc = subprocess.Popen([sysmgr_bin, "--syscfg=docker", "--emulation"], stdout=log, stderr=subprocess.STDOUT, env=env)
             with open(os.path.join(RUN, "sysmgr.pid"), "w") as f:
                 f.write(str(proc.pid))
             print("peer:    sysmgr killed and restarted, waiting for re-subscribe")

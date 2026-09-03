@@ -5,6 +5,7 @@
 #include "LogHandler.h"
 #include <fstream>
 #include <iostream>
+#include <stdlib.h>
 #define ASYNC_TASK_EVENT_DELAY                                                 \
   200000 // needed because event might go too fast to subscriber before being
          // handled in a proper way
@@ -1222,13 +1223,10 @@ SysRpc::process_async_run_shellcmd(SYSMGR_SHELLCMD_PACKET *pPacket) {
   usleep(ASYNC_TASK_EVENT_DELAY); // needed because event might go too fast to
                                   // subscriber before being handled in a proper
                                   // way
-  if (get_emulation_flag() == true)
+  // emulation skips the shell as well, unless SYSMGR_EMULATION_SHELL is set
+  // (test rigs: hardware stays emulated, shell commands really run)
+  if (get_emulation_flag() == true && getenv("SYSMGR_EMULATION_SHELL") == NULL)
     return RPC_SRV_RESULT_SUCCESS;
-  // SmsMgr *pMgr=(SmsMgr*)pDataCache->pSmsMgr;
-  // pMgr->LogFlag=get_debug_log_flag();
-  // if(pMgr->DialVoice(pPacket->destNum)!=0)
-  //	return RPC_SRV_RESULT_FAIL;
-  // else
   if (system(pPacket->cmd) != 0)
     return RPC_SRV_RESULT_FAIL;
   else

@@ -1,19 +1,104 @@
 {
   "manifest": 1,
-  "device": {"name": "rig-device", "description": "test rig manifest", "icon": "chip"},
+  "device": {
+    "name": "rig-device",
+    "description": "test rig manifest",
+    "icon": "chip"
+  },
   "groups": [
-    {"id": "status", "label": "Status", "icon": "info",
-     "controls": [
-       {"id": "who", "type": "text", "label": "Account", "command": "account", "interval": 300},
-       {"id": "up", "type": "indicator", "label": "Uptime", "command": "uptime", "interval": 60, "regex": "([0-9]+)", "unit": "h"}
-     ]},
-    {"id": "actions", "label": "Actions",
-     "controls": [
-       {"id": "blink", "type": "button", "label": "Identify board", "icon": "flash", "action": "identify"},
-       {"id": "nap", "type": "button", "label": "Nap", "action": "sleep 1", "role": "viewer"},
-       {"id": "greet", "type": "button", "label": "Greeting", "action": "greeting", "role": "viewer"},
-       {"id": "led", "type": "toggle", "label": "LED", "on": "gpio 4 1", "off": "gpio 4 0", "command": "gpio 4", "interval": 30, "match": "1"},
-       {"id": "restart", "type": "button", "label": "Reboot", "action": "reboot", "role": "admin", "confirm": true}
-     ]}
+    {
+      "id": "status",
+      "label": "Status",
+      "icon": "info",
+      "controls": [
+        {
+          "id": "who",
+          "type": "text",
+          "label": "Account",
+          "command": "account",
+          "interval": 300
+        },
+        {
+          "id": "up",
+          "type": "indicator",
+          "label": "Uptime",
+          "command": "uptime",
+          "interval": 60,
+          "regex": "([0-9]+)",
+          "unit": "h"
+        },
+        {
+          "id": "name",
+          "type": "text",
+          "label": "Bot name",
+          "command": "botname",
+          "interval": 5
+        },
+        {
+          "id": "sh",
+          "type": "indicator",
+          "label": "Shell value",
+          "command": "shellcmd echo hi-there",
+          "interval": 5,
+          "regex": "(hi-[a-z]+)"
+        }
+      ]
+    },
+    {
+      "id": "actions",
+      "label": "Actions",
+      "controls": [
+        {
+          "id": "blink",
+          "type": "button",
+          "label": "Identify board",
+          "icon": "flash",
+          "action": "identify"
+        },
+        {
+          "id": "nap",
+          "type": "button",
+          "label": "Nap",
+          "action": "sleep 1",
+          "role": "viewer"
+        },
+        {
+          "id": "greet",
+          "type": "button",
+          "label": "Greeting",
+          "action": "greeting",
+          "role": "viewer"
+        },
+        {
+          "id": "led",
+          "type": "toggle",
+          "label": "LED",
+          "on": "gpio 4 1",
+          "off": "gpio 4 0",
+          "command": "gpio 4",
+          "interval": 30,
+          "match": "1"
+        },
+        {
+          "id": "restart",
+          "type": "button",
+          "label": "Reboot",
+          "action": "reboot",
+          "role": "admin",
+          "confirm": true
+        },
+        {
+          "id": "sw",
+          "type": "toggle",
+          "label": "Switch",
+          "on": "botname sw-on",
+          "off": "botname sw-off",
+          "command": "botname",
+          "interval": 5,
+          "match": "-on",
+          "role": "viewer"
+        }
+      ]
+    }
   ]
 }

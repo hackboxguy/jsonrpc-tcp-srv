@@ -11,3 +11,5 @@ fallbackserver: 127.0.0.1
 fallbackport: 5223
 fallbackafter: 5
 primaryprobe: 10
+# events: fast heartbeat for the rig (production default 300)
+heartbeat: 5

@@ -210,6 +210,18 @@ toggle, indicator, text) that map to chat commands or aliases
 admin-approved grant for that action. `manifest`, `manifest check`,
 `manifest reload` manage it over chat; an invalid file keeps the previous one.
 
+### Events (since bucket 6)
+
+`XmppEvents.cpp` and `Subscriptions.cpp`: buddies subscribe to topics
+(pollable manifest control ids, `system`, `task`, `heartbeat`, `*`) through
+`subscribe`/`unsubscribe`/`get_subscriptions` or chat `watch`/`unwatch`;
+subscriptions persist in `--subscrfile`. A poller thread runs subscribed
+controls' commands at their interval on the worker, waits for asynchronous
+(`shellcmd`) completions and reads the captured output, extracts values with
+`regex`/`match`, and publishes `event` notifications on change (initial value
+on subscribe). Login key `heartbeat` (default 300 s) drives the heartbeat
+topic. Delivery is fire-and-forget with a 60 events/minute cap per subscriber.
+
 ## Data Flow
 
 ### Incoming XMPP Message Flow
@@ -260,7 +272,7 @@ adminbuddy: admin@xmppserver.com
 xmproxysrv [OPTIONS]
   --port=<port>              # JSON-RPC TCP port (default: 40002)
   --debug                    # Enable debug logging
-  --emulation                # Emulation mode
+  --emulation                # Emulation mode (sysmgr: hardware only; set SYSMGR_EMULATION_SHELL=1 to still run shell commands, used by the test rig)
   --board=<type>             # Board type (raspi, nexx3020, mt300nv2, etc.)
   --loginfile=<path>         # XMPP credentials file
   --aliasfile=<path>         # Command aliases file
@@ -272,6 +284,7 @@ xmproxysrv [OPTIONS]
   --loglevel=<level>         # error|warn|info|debug (default info)
   --aclfile=<path>           # buddy roles file (admin, operator, viewer)
   --manifest=<path>          # device UI manifest served to apps
+  --subscrfile=<path>        # persisted event subscriptions
 ```
 
 Optional login-file keys: `server`, `port`, `pinginterval`, `pingmisses`,

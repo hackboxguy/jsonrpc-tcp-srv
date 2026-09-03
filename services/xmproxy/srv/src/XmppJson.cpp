@@ -226,6 +226,12 @@ static json_object *serve_one(XmppMgr *mgr, json_object *req,
     result = mgr->json_describe(role);
   } else if (method == "list_commands") {
     result = mgr->json_list_commands(role);
+  } else if (method == "subscribe") {
+    result = mgr->json_subscribe(params, sender, role, &error);
+  } else if (method == "unsubscribe") {
+    result = mgr->json_unsubscribe(params, sender, &error);
+  } else if (method == "get_subscriptions") {
+    result = mgr->json_get_subscriptions(sender);
   } else if (method == "get_manifest") {
     result = mgr->json_get_manifest(role, &error);
   } else if (method == "exec") {
@@ -269,7 +275,8 @@ json_object *XmppMgr::json_describe(XM_ROLE role) {
                          json_object_new_boolean(is_on_fallback()));
   json_object_object_add(d, "role", json_object_new_string(xm_role_name(role)));
   json_object *methods = json_object_new_array();
-  const char *names[] = {"ping", "describe", "list_commands", "exec"};
+  const char *names[] = {"ping",      "describe",    "list_commands",    "exec",
+                         "subscribe", "unsubscribe", "get_subscriptions"};
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
     json_object_array_add(methods, json_object_new_string(names[i]));
   if (manifest_loaded())
@@ -280,6 +287,14 @@ json_object *XmppMgr::json_describe(XM_ROLE role) {
   json_object_object_add(d, "notifications", json_object_new_array());
   json_object_array_add(json_object_object_get(d, "notifications"),
                         json_object_new_string("task.done"));
+  json_object_array_add(json_object_object_get(d, "notifications"),
+                        json_object_new_string("event"));
+  json_object *topics = json_object_new_array();
+  const char *fixed[] = {"system", "task", "heartbeat", "*"};
+  for (size_t i = 0; i < 4; i++)
+    json_object_array_add(topics, json_object_new_string(fixed[i]));
+  json_object_object_add(d, "topics", topics);
+  json_object_object_add(d, "heartbeat", json_object_new_int(HeartbeatSec));
   return d;
 }
 

@@ -250,8 +250,22 @@ Acceptance
   command output changes in the rig.
 
 Decisions to verify at checkpoint
-- D13: fire-and-forget delivery.
-- Q3: value and manifest size limits.
+- D13: fire-and-forget delivery. (confirmed 2026-09-03) Implemented with a
+  per-subscriber limit of 60 events per minute.
+- Q3: value and manifest size limits. (confirmed 2026-09-03) One XMPP
+  message per event or reply; keep indicator output small, shell output is
+  capped at 1300 bytes by the daemon.
+- P4 heartbeat topic: `heartbeat` login key, default 300 s, 0 disables.
+- A control is polled only while somebody subscribes to it; the current
+  value is delivered once on subscribe.
+- Topics: control ids, `system`, `task`, `heartbeat`, `*`. Subscribing to a
+  control requires the control's role.
+
+Status: done 2026-09-03 on branch `m2m-extension`. `test_events.py` covers
+initial value, change detection, silence without change, unsubscribe,
+persistence, viewer subscriptions, toggle state, asynchronous shell
+indicator, invalid topics, chat watch/unwatch, `*`, task and heartbeat
+topics, and the `online` system event after a server restart.
 
 ## Bucket 7 — Legacy retirement and hardening
 

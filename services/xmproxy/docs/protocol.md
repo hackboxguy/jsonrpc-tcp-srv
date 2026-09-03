@@ -37,6 +37,9 @@ Error: `{"jsonrpc": "2.0", "error": {"code": -32001, "message": "Not authorized"
 | `list_commands` | viewer | none | array of `{"name", "args", "role", "allowed"}` for every enabled chat command; `allowed` is evaluated for the caller |
 | `exec` | per command or control | `{"cmd": "<one chat command>"}` or `{"control": "<id>", "arg": "on"}` | see below |
 | `get_manifest` | viewer | none | the device manifest with `allowed` per control, see `manifest.md`; error `-32004` when no manifest is loaded |
+| `subscribe` | viewer (control topics: the control's role) | `{"topics": ["temp", "system"]}` | `{"topics": [...all current...]}`; every subscribed control is polled right away and its value delivered |
+| `unsubscribe` | viewer | `{"topics": [...]}` or none for all | `{"topics": [...left...]}` |
+| `get_subscriptions` | viewer | none | `{"topics": [...]}` |
 
 ### describe
 
@@ -102,6 +105,39 @@ times out (`asynctimeout`):
 
 `id` echoes the id of the `exec` request that started the task.
 
+## Events
+
+Subscriptions are per bare JID, persisted on the device (`--subscrfile`),
+and survive restarts. Topics:
+
+| Topic | Meaning |
+|---|---|
+| `<control id>` | any manifest control with `command` and `interval` (indicator, text, toggle state) |
+| `system` | `online` (a session was established), `failover`, `failback`, `shutdown` |
+| `task` | completion of asynchronous commands started by other buddies (`task`, `return`, `requester`) |
+| `heartbeat` | every `heartbeat` seconds (login file, default 300, 0 disables): `uptime`, `jid`, `on_fallback` |
+| `*` | everything above |
+
+Delivery is a JSON-RPC notification:
+
+```json
+{"jsonrpc": "2.0", "method": "event",
+ "params": {"topic": "temp", "control": "temp", "type": "indicator",
+            "value": "21.5", "unit": "°C", "time": 1788480000}}
+```
+
+- Every `params` carries `topic` and `time`. Control events add `control`,
+  `type` and either `value` (after `regex` or `match` extraction, toggles
+  report `on`/`off`) or `error` (the command's return code, `no match`, or
+  `control removed`).
+- The device polls a control only while somebody subscribes to it, at its
+  `interval`, and sends an event only when the value or error changed. On
+  `subscribe` the current value is sent once to the subscriber.
+- Delivery is fire-and-forget (D13): the server stores messages for offline
+  buddies, and an app re-reads state on connect. At most 60 events per
+  minute reach one subscriber; beyond that events are dropped and logged.
+- Chat equivalent: `watch` (list), `watch <topic,...>`, `unwatch [<topic,...>]`.
+
 ## Error codes
 
 | Code | Meaning |
@@ -125,7 +161,9 @@ fresh ids per action and may safely resend after a reconnect.
 
 - One XMPP message per reply; servers commonly cap stanzas at 256 KB
   (Snikket advertises `max-bytes` 262144). `list_commands` and `describe` are
-  a few KB.
+  a few KB. Event values are the text a command returns, so keep indicator
+  commands short (Q3: a few KB at most; `shellcmdresp` output is capped by
+  the daemon at 1300 bytes).
 - The command queue holds 64 pending requests across all senders.
 
 ## Examples

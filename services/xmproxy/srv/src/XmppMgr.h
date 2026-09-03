@@ -8,6 +8,7 @@
 #endif
 #include "Acl.h"
 #include "Manifest.h"
+#include "Subscriptions.h"
 #include "XmLog.h"
 #include <atomic>
 #include <deque>
@@ -38,6 +39,7 @@ using namespace std;
   3 // consecutive failures before switching account
 #define XMPP_DEFAULT_PRIMARY_PROBE_SEC                                         \
   300 // probe period for the primary while on fallback
+#define XMPP_DEFAULT_HEARTBEAT_SEC 300 // heartbeat topic period, 0 disables
 #define GITHUB_FMW_DOWNLOAD_FOLDER                                             \
   "http://github.com/hackboxguy/downloads/raw/master/"
 // #define BRBOX_SYS_CONFIG_FILE_PATH "/boot/sysconfig.txt"
@@ -108,6 +110,8 @@ typedef enum EXMPP_CMD_TYPES_T {
   EXMPP_CMD_ACL,      // list/set/remove/reload buddy roles (admin)
   EXMPP_CMD_MANIFEST, // manifest summary (viewer), reload/check (admin)
   EXMPP_CMD_RUN,      // run <control-id> [on|off] from the manifest
+  EXMPP_CMD_WATCH,    // watch [<topic,...>]: subscribe to events / list
+  EXMPP_CMD_UNWATCH,  // unwatch [<topic,...>]
   EXMPP_CMD_UNKNOWN,
   EXMPP_CMD_NONE
 } EXMPP_CMD_TYPES;
@@ -117,6 +121,8 @@ struct XmppCmdEntry {
   std::string sender;
   bool aiPrompt; // forward to the AI agent instead of the command table
   bool json;     // JSON-RPC 2.0 body (bucket 4)
+  std::string pollControl;   // poll job for this manifest control (bucket 6)
+  std::string pollInitialTo; // deliver the value to this jid even if unchanged
 
 public:
   XmppCmdEntry(std::string msg, std::string from, bool ai = false,
@@ -140,10 +146,13 @@ struct AyncEventEntry {
   time_t created;    // for the timeout sweep
   bool json;         // requester used JSON-RPC: completion goes as notification
   std::string reqId; // its request id, echoed in the notification
+  std::string pollControl;   // completion belongs to a poll of this control
+  std::string pollInitialTo; // and its value goes to this jid regardless
+  bool shellOutput;          // value is the captured shellcmd output
 public:
   AyncEventEntry(int tid, int port, int xmtid, std::string sender)
       : taskID(tid), srvPort(port), xmppTID(xmtid), to(sender),
-        created(time(NULL)), json(false) {}
+        created(time(NULL)), json(false), shellOutput(false) {}
 };
 // following functor object is used as predicator for finding a specific vector
 // element entry based on srvToken
@@ -318,8 +327,62 @@ class XmppMgr : public ADXmppConsumer,
   struct ReqCtx {
     bool json;
     std::string reqId;
-    ReqCtx() : json(false) {}
+    std::string pollControl;
+    std::string pollInitialTo;
+    bool shellOutput;
+    ReqCtx() : json(false), shellOutput(false) {}
+    void clear() {
+      json = false;
+      reqId.clear();
+      pollControl.clear();
+      pollInitialTo.clear();
+      shellOutput = false;
+    }
   } CurrentReq;
+  // ---- events (bucket 6, XmppEvents.cpp) ----
+  XmSubscriptions Subs;
+  std::string SubscrFile;
+  int HeartbeatSec;
+  int heartbeat_period_ms;
+  time_t StartedAt;
+  ADThread PollerThread;
+  int pollerThreadID;
+  std::atomic<bool> PollerStop;
+  std::atomic<bool> PollerRunning;
+  struct ControlState {
+    bool valid;
+    std::string value;
+    std::string error;
+    time_t lastPoll;
+    bool inflight;
+    ControlState() : valid(false), lastPoll(0), inflight(false) {}
+  };
+  std::map<std::string, ControlState> controlStates;
+  std::mutex stateMutex;
+  std::deque<std::string> pendingSystemEvents;
+  std::mutex systemMutex;
+  bool wasConnected;
+  int poll_loop();
+  void enqueue_poll(const std::string &id, const std::string &initialTo);
+  void poll_control(const std::string &id, const std::string &initialTo);
+  void finish_poll(const std::string &id, const std::string &initialTo,
+                   RPC_SRV_RESULT res, const std::string &raw);
+  bool extract_value(const XmControl &c, const std::string &raw,
+                     std::string &value);
+  void publish(const std::string &topic, struct json_object *params,
+               const std::string &exceptJid = "");
+  void publish_to(const std::string &jid, const std::string &topic,
+                  struct json_object *params);
+  bool topic_valid(const std::string &topic, XM_ROLE role, std::string &why,
+                   int *errCode);
+  void request_initial_polls(const std::string &jid,
+                             const std::set<std::string> &topics);
+  void set_pending_system_event(const std::string &ev);
+  void emit_system_events();
+  RPC_SRV_RESULT proc_cmd_watch(std::string msg, std::string &returnval,
+                                const std::string &sender, XM_ROLE role);
+  RPC_SRV_RESULT proc_cmd_unwatch(std::string msg, std::string &returnval,
+                                  const std::string &sender);
   std::deque<std::string> expand_command(std::string msg);
   RPC_SRV_RESULT run_single_command(const std::string &cmd,
                                     const std::string &sender,
@@ -344,6 +407,13 @@ class XmppMgr : public ADXmppConsumer,
 
 public:
   struct json_object *json_describe(XM_ROLE role);
+  struct json_object *json_subscribe(struct json_object *params,
+                                     const std::string &sender, XM_ROLE role,
+                                     struct json_object **error);
+  struct json_object *json_unsubscribe(struct json_object *params,
+                                       const std::string &sender,
+                                       struct json_object **error);
+  struct json_object *json_get_subscriptions(const std::string &sender);
   struct json_object *json_get_manifest(XM_ROLE role,
                                         struct json_object **error);
   struct json_object *json_exec_control(const std::string &id,
@@ -532,19 +602,27 @@ public:
   void SetAiAgentUrl(std::string url);
   void SetAiModel(std::string model);
   int AttachHeartBeat(ADTimer *pTimer);
-  RPC_SRV_RESULT
-  RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID, std::string to,
-                      bool json = false,
-                      std::string reqId = ""); // called by eventHandler
+  RPC_SRV_RESULT RpcResponseCallback(RPC_SRV_RESULT taskRes, int taskID,
+                                     std::string to, bool json = false,
+                                     std::string reqId = "",
+                                     std::string pollControl = "",
+                                     std::string pollInitialTo = "",
+                                     bool shellOutput = false);
   RPC_SRV_RESULT RpcResponseCallback(std::string taskRes, int taskID,
                                      std::string to, bool json = false,
-                                     std::string reqId = "");
+                                     std::string reqId = "",
+                                     std::string pollControl = "",
+                                     std::string pollInitialTo = "",
+                                     bool shellOutput = false);
   RPC_SRV_RESULT GpioEventCallback(int evntNum, int evntArg);
   // RPC_SRV_RESULT IsItMyAsyncTaskResp(int tid,int port);
   RPC_SRV_RESULT AccessAsyncTaskList(int tid, int port, bool insertEntryFlag,
                                      int *xmpptID, std::string &sender,
                                      bool *json = NULL,
-                                     std::string *reqId = NULL);
+                                     std::string *reqId = NULL,
+                                     std::string *pollControl = NULL,
+                                     std::string *pollInitialTo = NULL,
+                                     bool *shellOutput = NULL);
   void SetUSBGsmSts(bool sts);
   void SetOpenWrtCmdGroupSts(bool sts);
   void SetDockerCmdGroupSts(bool sts);
@@ -557,6 +635,9 @@ public:
   inline void SetAclFilePath(std::string filepath) { AclFile = filepath; };
   inline void SetManifestFilePath(std::string filepath) {
     ManifestFile = filepath;
+  };
+  inline void SetSubscrFilePath(std::string filepath) {
+    SubscrFile = filepath;
   };
   inline void SetUpdateurlFilePath(std::string filepath) {
     UpdateUrlFile = filepath;
