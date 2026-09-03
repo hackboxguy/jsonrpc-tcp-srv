@@ -349,6 +349,31 @@ Progress (2026-09-03)
 Acceptance
 - S1, S2 and S3 measured and recorded in `docs/soak-report.md`.
 
+## Bucket 9 — IOT-Agent settings page in the micropanel-touch launcher
+
+Requested 2026-09-03. Repo: `micropanel-touch` (LVGL, C++17), committed to
+`main`.
+
+Scope
+- Network menu gains an "IOT-Agent" entry.
+- Screen: username (bot JID), server, password with an eye button that
+  toggles masking, a Connect button, a red/green indicator of the daemon's
+  connection state.
+- Saving writes `/data/xmproxy/etc/xmpp-login.txt` through a typed
+  operation of the root broker (the UI is unprivileged) and restarts
+  `xmproxysrv.service`; the file format stays the daemon's key-value login
+  file so the chat, fallback and tuning keys keep working.
+- Status: the UI polls the daemon's local JSON-RPC port
+  (`get_online_status` on 127.0.0.1:40005) while the screen is shown.
+- Later (owner): BOSH settings and a custom server port on the same screen.
+- Tests for the settings class and the broker operation, docs updated
+  (`docs/action-execution-contract.md`, misc-tools capability matrix).
+
+Acceptance
+- Entering credentials on the Pi's panel and pressing Connect makes the
+  daemon log in; the indicator turns green; the file survives reboot and
+  A/B update; the unit tests pass on the host.
+
 ## Proposed additions (not yet scheduled, owner to decide)
 
 Raised at the bucket 0 checkpoint. Each names the bucket it would join.
