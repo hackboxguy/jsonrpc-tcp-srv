@@ -130,7 +130,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
     timeout.tv_usec = 0;
     memcpy(&working_set, &master_set, sizeof(master_set));
     rc = select(max_sd + 1, &working_set, NULL, NULL, &timeout);
-    if (end_server == AD_NETWORK_TRUE)
+    if (__atomic_load_n(&end_server, __ATOMIC_SEQ_CST) == AD_NETWORK_TRUE)
       break;
     if (rc < 0) {
       if (errno == EINTR)
@@ -235,12 +235,8 @@ int ADNetServer::thread_callback_function(void *pUserData,
         }
       }
     }
-  } while (end_server == AD_NETWORK_FALSE);
+  } while (__atomic_load_n(&end_server, __ATOMIC_SEQ_CST) == AD_NETWORK_FALSE);
   return 0;
-}
-#include <signal.h>
-void Ouch(int num) {
-  LOG_ERR_MSG("ADNetServer:AdLib", "Ouch!!! received SIGALRM");
 }
 ADNetServer::ADNetServer() {
   socketlog = 0;
@@ -249,7 +245,6 @@ ADNetServer::ADNetServer() {
   end_server = AD_NETWORK_FALSE;
   sock_type = ADLIB_TCP_SOCKET_TYPE_JSON;
   initialize_helpers();
-  signal(SIGALRM, Ouch);
 }
 ADNetServer::ADNetServer(int port) {
   socketlog = 0;
@@ -258,7 +253,6 @@ ADNetServer::ADNetServer(int port) {
   end_server = AD_NETWORK_FALSE;
   sock_type = ADLIB_TCP_SOCKET_TYPE_JSON;
   initialize_helpers();
-  signal(SIGALRM, Ouch);
 }
 ADNetServer::~ADNetServer() { stop_listening(); }
 int ADNetServer::start_listening(int port, int socket_log,
@@ -316,10 +310,12 @@ int ADNetServer::start_listening() {
 int ADNetServer::stop_listening() {
   if (connected == 0)
     return 0;
-  end_server = AD_NETWORK_TRUE;
-  response_thread.stop_thread();
-  sleep(1);
+  // cooperative stop: the listen loop checks end_server at least once per
+  // second (select timeout); stop input first, then the response sender
+  __atomic_store_n(&end_server, (unsigned char)AD_NETWORK_TRUE,
+                   __ATOMIC_SEQ_CST);
   listen_thread.stop_thread();
+  response_thread.stop_thread();
   request_chain.remove_all();
   response_chain.remove_all();
   clientInfo_chain.remove_all();

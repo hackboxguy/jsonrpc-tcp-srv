@@ -1,15 +1,54 @@
 #include "ADTimer.hpp"
 #include "ADCommon.hpp"
 #include "ADJsonRpcClient.hpp"
+#include <errno.h>
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/time.h>
 #include <unistd.h>
 using namespace std;
+// stoptimer/received_user_stop_sig are written from signal handlers and
+// other threads: always accessed with __atomic builtins (finding M3)
 int ADTimer::received_user_stop_sig = 0;
 int ADTimer::stoptimer = 0;
 ADTimer *pTmpTimer;
+// thread that waits in wait_for_exit_signal(); signals that the kernel
+// delivers to any other thread are forwarded to it (finding H1)
+static pid_t waiter_tid = 0;
+static pid_t current_tid() { return (pid_t)syscall(SYS_gettid); }
+// Process-directed signals can be delivered to any thread that does not
+// block them. Worker threads keep their signals unblocked on purpose:
+// processes they spawn (popen/system) inherit the signal mask, and blocked
+// SIGTERM/SIGINT in those children would make them unkillable. Instead this
+// handler re-queues the signal (with its siginfo payload) to the waiting
+// thread, which blocks everything and consumes it in sigwaitinfo().
+void ADTimer::forward_signal_handler(int sig, siginfo_t *info, void *context) {
+  int saved_errno = errno;
+  pid_t target = __atomic_load_n(&waiter_tid, __ATOMIC_SEQ_CST);
+  if (target > 0 && current_tid() != target) {
+    siginfo_t copy = *info;
+    // the kernel only lets the thread group leader re-send kernel/kill()
+    // generated codes; SI_QUEUE keeps the payload (si_int) for sigqueue()
+    if (copy.si_code >= 0 || copy.si_code == SI_TKILL)
+      copy.si_code = SI_QUEUE;
+    if (syscall(SYS_rt_tgsigqueueinfo, getpid(), target, sig, &copy) != 0)
+      syscall(SYS_tgkill, getpid(), target, sig);
+  } else if (sig == SIGINT || sig == SIGTERM || sig == SIGQUIT) {
+    // arrived on the waiting thread before it entered sigwaitinfo()
+    __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);
+  }
+  errno = saved_errno;
+}
+int ADTimer::install_forwarder(int sig) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_sigaction = &ADTimer::forward_signal_handler;
+  sa.sa_flags = SA_SIGINFO | SA_RESTART;
+  sigemptyset(&sa.sa_mask);
+  return sigaction(sig, &sa, NULL);
+}
 ADTimer::ADTimer() : millisec_time(100), passive_mode(true) {
   custom_sig_chain.set_element_deleter(
       &chain_delete_object<ADTIMER_CUSTOM_SIG>);
@@ -18,12 +57,16 @@ ADTimer::ADTimer() : millisec_time(100), passive_mode(true) {
 ADTimer::ADTimer(int timer_millisec, int port) {
   notifyPortNum = port;
   passive_mode = false;
+  __atomic_store_n(&waiter_tid, current_tid(), __ATOMIC_SEQ_CST);
+  const int forwarded[] = {SIGINT, SIGTERM, SIGQUIT, SIGHUP, SIGALRM, SIGIO};
+  for (size_t i = 0; i < sizeof(forwarded) / sizeof(forwarded[0]); i++)
+    install_forwarder(forwarded[i]);
   custom_sig_chain.set_element_deleter(
       &chain_delete_object<ADTIMER_CUSTOM_SIG>);
   SigInfoChain.set_element_deleter(&chain_delete_object<ADTIMER_CUSTOM_SIG>);
-  stoptimer = 0;
+  __atomic_store_n(&stoptimer, 0, __ATOMIC_SEQ_CST);
   pTmpTimer = this;
-  received_user_stop_sig = 0;
+  __atomic_store_n(&received_user_stop_sig, 0, __ATOMIC_SEQ_CST);
   millisec_time = timer_millisec;
   prepare_to_stop();
   start_millisec_timer(millisec_time);
@@ -40,7 +83,7 @@ ADTimer::~ADTimer() {
   TimerThread.stop_thread();
   CustomSigThread.stop_thread();
   if (passive_mode == false)
-    stoptimer = 1;
+    __atomic_store_n(&stoptimer, 1, __ATOMIC_SEQ_CST);
   custom_sig_chain.remove_all();
   SigInfoChain.remove_all();
 }
@@ -72,7 +115,7 @@ void ADTimer::apptimer_stop_handler(int sig_no) {
   default:
     return;
   }
-  received_user_stop_sig = 1;
+  __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);
 }
 int ADTimer::prepare_to_stop(void) { return 0; }
 int ADTimer::get_100ms_heartbeat() {
@@ -88,11 +131,11 @@ int ADTimer::get_sigio_event() {
 int ADTimer::stop_timer() {
   if (passive_mode == true)
     return 0;
-  stoptimer = 1;
+  __atomic_store_n(&stoptimer, 1, __ATOMIC_SEQ_CST);
   return 0;
 }
 void ADTimer::millisec_signal_handler(int sig_no) {
-  if (stoptimer == 1)
+  if (__atomic_load_n(&stoptimer, __ATOMIC_SEQ_CST) == 1)
     return;
   pTmpTimer->notify_subscribers();
 }
@@ -117,35 +160,39 @@ int ADTimer::wait_for_exit_signal() {
     return 0;
   sigemptyset(&sigset);
   sigfillset(&sigset);
+  // synchronous fault signals cannot be waited for; keep them deliverable
+  sigdelset(&sigset, SIGSEGV);
+  sigdelset(&sigset, SIGBUS);
+  sigdelset(&sigset, SIGFPE);
+  sigdelset(&sigset, SIGILL);
   pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+  __atomic_store_n(&waiter_tid, current_tid(), __ATOMIC_SEQ_CST);
   setitimer(ITIMER_REAL, &timer, NULL);
-  int result, sig;
+  int sig;
   siginfo_t info;
-  while (received_user_stop_sig == 0) {
+  while (__atomic_load_n(&received_user_stop_sig, __ATOMIC_SEQ_CST) == 0) {
     sig = sigwaitinfo(&sigset, &info);
+    if (sig < 0)
+      continue; // EINTR
     switch (sig) {
     case SIGINT:
       LOG_INFO_MSG("SDSRV:AdLib", "ADTimer received SIGINT");
-      received_user_stop_sig = 1;
+      __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);
       break;
     case SIGTERM:
       LOG_INFO_MSG("SDSRV:AdLib", "ADTimer received SIGTERM");
-      received_user_stop_sig = 1;
+      __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);
       break;
     case SIGQUIT:
       LOG_INFO_MSG("SDSRV:AdLib", "ADTimer received SIGQUIT");
-      received_user_stop_sig = 1;
+      __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);
       break;
     case SIGIO:
       notify_sigio_to_subscribers();
       break;
     case SIGALRM:
-      if (stoptimer != 1)
+      if (__atomic_load_n(&stoptimer, __ATOMIC_SEQ_CST) != 1)
         TimerThread.wakeup_thread();
-      break;
-    case SIGSEGV:
-      LOG_INFO_MSG("SDSRV:AdLib",
-                   "ADTimer received Sementation fault!!!!!!!!!!!!!!!!!!!!!!");
       break;
     default:
       if (notify_registered_signals(sig, &info) != 0)
@@ -172,6 +219,8 @@ int ADTimer::register_custom_signal(int custom_sig_num,
   pConsumer->custom_sig_num = custom_sig_num;
   sigaddset(&sigset, custom_sig_num);
   pthread_sigmask(SIG_SETMASK, &sigset, NULL);
+  if (passive_mode == false)
+    install_forwarder(custom_sig_num);
   push_custom_sig_registration(custom_sig_num);
   return 0;
 }
@@ -185,10 +234,18 @@ int ADTimer::register_custom_signal_new(int custom_sig_num,
   pConsumer->custom_sig_num = custom_sig_num;
   sigaddset(&sigset, custom_sig_num);
   pthread_sigmask(SIG_SETMASK, &sigset, NULL);
+  if (passive_mode == false)
+    install_forwarder(custom_sig_num);
   push_custom_sig_registration(custom_sig_num);
   return 0;
 }
-void ADTimer::forced_exit() { received_user_stop_sig = 1; }
+void ADTimer::forced_exit() {
+  __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);
+  // wake the waiting thread now instead of relying on the next SIGALRM
+  pid_t target = __atomic_load_n(&waiter_tid, __ATOMIC_SEQ_CST);
+  if (target > 0 && target != current_tid())
+    syscall(SYS_tgkill, getpid(), target, SIGALRM);
+}
 int ADTimer::push_custom_sig_registration(int sig) {
   ADTIMER_CUSTOM_SIG *pSigReg = NULL;
   OBJECT_MEM_NEW(pSigReg, ADTIMER_CUSTOM_SIG);

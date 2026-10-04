@@ -75,6 +75,8 @@ private:
   static void custom_signal_handler(int sig, siginfo_t *info, void *context);
   static void custom_signal_handler_new(int sig, siginfo_t *info,
                                         void *context);
+  static void forward_signal_handler(int sig, siginfo_t *info, void *context);
+  static int install_forwarder(int sig);
   int push_custom_sig_registration(int sig);
   int notify_registered_signals(int sig, siginfo_t *info);
   ADThread TimerThread, CustomSigThread;

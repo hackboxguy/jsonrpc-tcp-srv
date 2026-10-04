@@ -19,9 +19,35 @@ inline long now_ms() {
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
 }
-// a port per test process so parallel ctest runs do not collide
+inline bool port_is_free(int port) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0)
+    return false;
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_port = htons(port);
+  bool ok = bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0;
+  close(fd);
+  return ok;
+}
+// A block of 4 ports per test process, below the kernel's ephemeral range
+// (32768+) so client connections of other tests cannot occupy them. The
+// first free block starting at a pid based offset is used.
+inline int pick_port_base() {
+  int start = (int)(getpid() % 2000);
+  for (int i = 0; i < 2000; i++) {
+    int candidate = 22000 + ((start + i) % 2000) * 4;
+    if (port_is_free(candidate) && port_is_free(candidate + 1) &&
+        port_is_free(candidate + 2) && port_is_free(candidate + 3))
+      return candidate;
+  }
+  return 22000;
+}
 inline int test_port(int offset = 0) {
-  return 47000 + (int)(getpid() % 2000) * 4 + offset;
+  static const int base = pick_port_base(); // thread-safe init (C++11)
+  return base + offset;
 }
 inline int connect_to(int port, bool nodelay = false) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);

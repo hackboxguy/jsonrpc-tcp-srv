@@ -3,6 +3,7 @@
 #include "ADThread.hpp"
 #include <deque>
 #include <iostream>
+#include <pthread.h>
 #include <vector>
 using namespace std;
 typedef struct EventEntry_t {
@@ -111,10 +112,14 @@ public:
     subscribers.push_back(pConsumer);
   }
 };
+// eventList, notifyEvent and processEvent are written by the RPC thread and
+// read by the notify/process threads; all access holds 'lock'. Network I/O
+// (send_event) and consumer callbacks run without the lock (finding C5).
 class ADEvntMgr : public ADEvntMgrProducer, public ADThreadConsumer {
   int AckToken;
   int notifyThreadID;
   int processThreadID;
+  pthread_mutex_t lock;
   std::vector<EventEntry *> eventList;
   std::deque<EventProcEntry> notifyEvent;
   std::deque<EventProcEntry> processEvent;
@@ -132,6 +137,7 @@ class ADEvntMgr : public ADEvntMgrProducer, public ADThreadConsumer {
 public:
   ADEvntMgr();
   ~ADEvntMgr();
+  void stop(); // stops both threads; idempotent
   int register_event_subscription(EventEntry *pEvent, int *ack_token);
   int unregister_event_subscription(int srv_token);
   int notify_event(int eventNum, int eventArg, int eventArg2);

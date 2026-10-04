@@ -3,6 +3,7 @@
 #include "ADThread.hpp"
 #include <deque>
 #include <iostream>
+#include <pthread.h>
 #include <vector>
 using namespace std;
 struct EvntNotifyEntry {
@@ -17,6 +18,7 @@ public:
         eventArg2(event_arg2) {}
 };
 class ADEvntNotifier : public ADThreadConsumer {
+  pthread_mutex_t lock; // guards NotifierList (finding C5)
   std::deque<EvntNotifyEntry> NotifierList;
   ADThread NotifierThread;
   virtual int monoshot_callback_function(void *pUserData,
