@@ -105,6 +105,29 @@ bool wait_requests(testnet::FakeServer &f, int n, int timeout_ms) {
 }
 } // namespace
 
+// too slow for the 1 s delivery timeout for the first 6 events
+static std::string slow_then_fast(const std::string &, int id, int n) {
+  if (n <= 6)
+    usleep(1500000);
+  return testnet::result_reply(id, "ok");
+}
+
+// V3-M2: five quick failures used to remove a busy subscriber
+TEST_CASE("V3-M2: a subscriber that is busy for a while stays subscribed") {
+  int port = testnet::test_port(3);
+  testnet::FakeServer sub(port, slow_then_fast);
+  ADEvntMgr mgr;
+  int token = 0;
+  REQUIRE(mgr.register_event_subscription(subscriber_entry(port, 1), &token) ==
+          0);
+  for (int i = 0; i < 7; i++) {
+    mgr.notify_event(i, 0, 0);
+    // one event at a time, so each delivery is attempted
+    CHECK(wait_requests(sub, i + 1, 5000));
+  }
+  CHECK(wait_requests(sub, 7, 5000)); // the 7th event still arrives
+}
+
 // V2-H4: one failed delivery used to remove the subscriber for good
 TEST_CASE("V2-H4: a subscriber that is down for one event stays subscribed") {
   int port = testnet::test_port(1);

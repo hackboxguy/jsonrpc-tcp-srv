@@ -206,6 +206,11 @@ class XmppMgr : public ADXmppConsumer,
   ADTimer *pMyTimer;
   bool DebugLog;
   std::string bboxSmsServerAddr;
+  // processCmd, Inbox and ResponseMsg are written by the gloox thread and
+  // read by XmppCmdProcessThread / the RPC thread: guarded by queue_lock
+  // (finding V3-M3, same pattern as ADEvntMgr)
+  pthread_mutex_t queue_lock;
+  bool pop_cmd(XmppCmdEntry *&out);
   std::deque<XmppCmdEntry> processCmd; // fifo for processing xmpp messages
   std::vector<AyncEventEntry> AsyncTaskList;
   std::deque<std::string> Inbox;

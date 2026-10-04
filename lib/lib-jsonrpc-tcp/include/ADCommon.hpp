@@ -152,11 +152,15 @@ typedef enum ADLIB_SERVICE_READY_STATE_T {
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include <syslog.h>
 // Logging (finding V2-M10): openlog() changes process-wide state and raced
 // with other threads' log calls when every macro did openlog/syslog/
 // closelog. The log is opened once (program name as ident, LOG_PID,
 // LOG_LOCAL0) and each message carries the service tag instead.
+// format checked like printf (V3-L3)
+inline void adlib_syslog(int priority, const char *service, const char *fmt,
+                         ...) __attribute__((format(printf, 3, 4)));
 inline void adlib_syslog(int priority, const char *service, const char *fmt,
                          ...) {
   static const bool opened =
@@ -187,8 +191,8 @@ inline void adlib_syslog(int priority, const char *service, const char *fmt,
     if (logflag == true)                                                       \
       adlib_syslog(LOG_DEBUG, service, msg, arg1, arg2);                       \
   } while (0)
-// note: historically logged at LOG_ERR priority; kept
-#define LOG_INFO_MSG(service, msg) adlib_syslog(LOG_ERR, service, "%s", msg)
+// informational messages (historically LOG_ERR, V3-L3)
+#define LOG_INFO_MSG(service, msg) adlib_syslog(LOG_INFO, service, "%s", msg)
 #define OBJECT_MEM_CREATE(pMemory, obj)                                        \
   do {                                                                         \
     if (pMemory != NULL) {                                                     \
@@ -458,6 +462,17 @@ typedef struct rpc_srv_request_t {
       return -1;                                                               \
     }                                                                          \
   } while (0)
+// bounded copy into a char array destination (V2-L5). Only arrays are
+// accepted: a pointer destination does not compile, so the size is never
+// silently taken from a pointer.
+template <size_t N>
+inline void adlib_copy_param(char (&dst)[N], const char *src) {
+  size_t n = strlen(src);
+  if (n >= N)
+    n = N - 1;
+  memcpy(dst, src, n);
+  dst[n] = '\0';
+}
 #define JSON_STRING_TO_STRING(STRING_NAME, STRING_VALUE)                       \
   do {                                                                         \
     char param_value[255];                                                     \
@@ -467,7 +482,7 @@ typedef struct rpc_srv_request_t {
       OBJ_MEM_DELETE(pPanelCmdObj);                                            \
       return -1;                                                               \
     }                                                                          \
-    strcpy(STRING_VALUE, param_value);                                         \
+    adlib_copy_param(STRING_VALUE, param_value);                               \
   } while (0)
 #define JSON_STRING_TO_INT(INT_NAME, INT_VALUE)                                \
   do {                                                                         \

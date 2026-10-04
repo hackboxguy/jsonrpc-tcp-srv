@@ -64,12 +64,14 @@ int ADNetServer::dup_if_same_client(int sock_descriptor, int cltid) {
 }
 // sends the whole buffer; handles partial writes, EINTR and EAGAIN until
 // AD_NET_SERVER_SEND_TIMEOUT_MS expired
-int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
+int ADNetServer::send_with_deadline(int fd, const char *buf, int len,
+                                    long *waited_ms) {
   int sent = 0;
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  long deadline =
-      ts.tv_sec * 1000L + ts.tv_nsec / 1000000L + AD_NET_SERVER_SEND_TIMEOUT_MS;
+  long start = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+  long deadline = start + AD_NET_SERVER_SEND_TIMEOUT_MS;
+  *waited_ms = 0;
   while (sent < len) {
     ssize_t rc = send(fd, buf + sent, len - sent, MSG_DONTWAIT | MSG_NOSIGNAL);
     if (rc > 0) {
@@ -91,6 +93,8 @@ int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
     if (poll(&pfd, 1, (int)left) < 0 && errno != EINTR)
       return -1;
   }
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  *waited_ms = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L - start;
   return 0;
 }
 // A response could not be sent within AD_NET_SERVER_SEND_TIMEOUT_MS: the
@@ -98,6 +102,27 @@ int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
 // client wait (V2-C3): shutdown() ends the socket for the listen thread
 // (it sees EOF and closes the fd), and removing the client record makes
 // dup_if_same_client() discard the remaining responses at once.
+// accounts the time the response thread waited for this connection
+bool ADNetServer::over_send_wait_budget(int cltid, long waited_ms) {
+  if (cltid < 0 || waited_ms <= 0)
+    return false;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  long now = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+  bool over = false;
+  pthread_mutex_lock(&pending_lock);
+  std::map<int, conn_pending>::iterator it = pending.find(cltid);
+  if (it != pending.end()) {
+    if (now - it->second.window_start_ms > AD_NET_SERVER_SEND_WAIT_WINDOW_MS) {
+      it->second.window_start_ms = now;
+      it->second.wait_ms = 0;
+    }
+    it->second.wait_ms += waited_ms;
+    over = it->second.wait_ms > AD_NET_SERVER_SEND_WAIT_BUDGET_MS;
+  }
+  pthread_mutex_unlock(&pending_lock);
+  return over;
+}
 bool ADNetServer::connection_dead(int cltid) {
   if (cltid < 0)
     return false;
@@ -214,8 +239,11 @@ int ADNetServer::monoshot_callback_function(void *pUserData,
     while ((resp_obj = (net_data_obj *)response_chain.chain_get()) != NULL) {
       int fd = dup_if_same_client(resp_obj->sock_descriptor, resp_obj->cltid);
       if (fd >= 0) {
+        long waited = 0;
         int src = send_with_deadline(fd, resp_obj->data_buffer,
-                                     resp_obj->data_buffer_len);
+                                     resp_obj->data_buffer_len, &waited);
+        if (src == 0 && over_send_wait_budget(resp_obj->cltid, waited))
+          src = -2; // reads too slowly over time: treat like a timeout
         if (src != 0)
           drop_connection(fd, resp_obj->sock_descriptor, resp_obj->cltid,
                           src == -2);

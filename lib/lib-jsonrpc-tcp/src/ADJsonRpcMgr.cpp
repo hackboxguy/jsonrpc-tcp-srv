@@ -3,6 +3,7 @@
 ADJsonRpcMgr::ADJsonRpcMgr(int ver, bool debuglog, ADCMN_DEV_INFO *pDev) {
   myTimer = NULL;
   stopped = false;
+  methods_attached = false;
   pthread_mutex_init(&stop_lock, NULL);
   pDevInfo = pDev;
   svnVersion = ver;
@@ -111,6 +112,16 @@ RPC_SRV_RESULT ADJsonRpcMgr::run_work(int cmd, unsigned char *pWorkData,
 }
 int ADJsonRpcMgr::Start(int port, int socket_log, int emulation) {
   char rpc_name[1024];
+  // one Start per object (V3-L2): a stopped manager has no threads left;
+  // after a failed Start (port busy) only listening is retried
+  pthread_mutex_lock(&stop_lock);
+  bool is_stopped = stopped;
+  pthread_mutex_unlock(&stop_lock);
+  if (is_stopped)
+    return -1;
+  if (methods_attached)
+    return Proxy.start_listening(port, socket_log) == 0 ? 0 : -1;
+  methods_attached = true;
   TaskWorkerSetPortNumber(port);
   JMapper.attach_rpc_method(EJSON_RPCGMGR_GET_TASK_STS,
                             (char *)RPCMGR_RPC_TASK_STS_GET);

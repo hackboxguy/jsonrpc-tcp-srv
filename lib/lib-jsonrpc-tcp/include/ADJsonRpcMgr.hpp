@@ -373,6 +373,7 @@ class ADJsonRpcMgr : public ADJsonRpcMgrProducer,
                      public ADEvntMgrConsumer {
   ADTimer *myTimer;
   bool stopped;
+  bool methods_attached;     // Start() registered the RPC methods
   pthread_mutex_t stop_lock; // Stop() returns only when everything stopped
   ADJsonRpcProxy Proxy;
   ADJsonRpcMapper JMapper;
@@ -476,6 +477,8 @@ public:
   int AttachHeartBeat(ADTimer *pTimer);
   // Returns 0, or -1 if the port cannot be opened (the reason is logged);
   // a service should then exit with an error so its supervisor restarts it.
+  // Start() may be called again after a failure (it then only retries
+  // listening); after Stop() the object cannot be started again.
   int Start(int port, int socket_log, int emulation);
   // same, listening only on bind_ip (e.g. "127.0.0.1")
   int Start(int port, int socket_log, int emulation, const char *bind_ip);

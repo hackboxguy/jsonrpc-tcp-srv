@@ -15,13 +15,19 @@ typedef struct EventEntry_t {
   int sock_id;
   char ip[512];
   bool deleteFlag;
-  int failCount; // consecutive failed deliveries (set by ADEvntMgr)
+  int failCount;    // consecutive failed deliveries (set by ADEvntMgr)
+  long firstFailMs; // monotonic time of the first of those failures
 } EventEntry;
-// Event delivery limits (finding V2-H4): a subscriber is only removed after
-// this many consecutive failed deliveries, each delivery is bounded by the
-// two timeouts, and at most ADEVNT_MGR_MAX_QUEUED events wait (oldest are
-// dropped).
+// Event delivery limits (findings V2-H4, V3-M2): a subscriber is removed
+// only when its deliveries have failed continuously for
+// ADEVNT_MGR_FAIL_WINDOW_MS and at least ADEVNT_MGR_MAX_FAILURES times, so a
+// subscriber that is busy or restarting for a while keeps its subscription.
+// Failed events are not retried. Subscribers should re-subscribe after
+// their own restart (a duplicate subscription is answered with
+// ITEM_DUPLICATE_FOUND and is harmless). Each delivery is bounded by the two
+// timeouts; at most ADEVNT_MGR_MAX_QUEUED events wait (oldest dropped).
 #define ADEVNT_MGR_MAX_FAILURES 5
+#define ADEVNT_MGR_FAIL_WINDOW_MS 60000
 #define ADEVNT_MGR_CONNECT_TIMEOUT_MS 1000
 #define ADEVNT_MGR_RECEIVE_TIMEOUT_MS 1000
 #define ADEVNT_MGR_MAX_QUEUED 1024

@@ -118,6 +118,7 @@ XMPROXY_CMD_TABLE xmproxy_cmd_table[] = // EXMPP_CMD_NONE+1] =
 /* ------------------------------------------------------------------------- */
 XmppMgr::XmppMgr() //: AckToken(0)
 {
+  pthread_mutex_init(&queue_lock, NULL);
   CyclicTime_ms = CLIENT_ALIVE_PING_DURATION_MS; // 60000;//60seconds
   event_period_ms = 0;
   heartbeat_ms = 100;
@@ -315,16 +316,20 @@ int XmppMgr::onXmppMessage(std::string msg, std::string sender,
   else if (msg.find("return=") != std::string::npos) {
     // this is the respose from another bot for a request from this bot
     // cout<<"###reveived resp from another bot####### : "<<msg<<endl;
+    pthread_mutex_lock(&queue_lock);
     ResponseMsg = msg;    // keep this in a cache for later use
     Inbox.push_back(msg); // keep all incoming messages from other bots(with
-                          // "return="" prefix)
+    pthread_mutex_unlock(&queue_lock);
+    // "return="" prefix)
     // std::cout<<"Got Response Message: "<<ResponseMsg<<std::endl;
     return 0; // just consume this message(do not autoreply)
   } else if (AiAgentUrl != "") {
     // redirect user commands to ollama hosted ai model
     XmppProxy.send_reply(generate_ai_response(msg), sender);
   } else {
+    pthread_mutex_lock(&queue_lock);
     processCmd.push_back(XmppCmdEntry(msg, sender));
+    pthread_mutex_unlock(&queue_lock);
     XmppCmdProcessThread.wakeup_thread(); // tell the worker to start working
   }
   return 0;
@@ -374,11 +379,24 @@ int XmppMgr::thread_callback_function(void *pUserData, ADThreadProducer *pObj) {
   return 0;
 }
 /* ------------------------------------------------------------------------- */
+// takes the oldest queued command (the caller deletes it); false if empty
+bool XmppMgr::pop_cmd(XmppCmdEntry *&out) {
+  out = NULL;
+  pthread_mutex_lock(&queue_lock);
+  if (!processCmd.empty()) {
+    out = new XmppCmdEntry(processCmd.front());
+    processCmd.pop_front();
+  }
+  pthread_mutex_unlock(&queue_lock);
+  return out != NULL;
+}
 int XmppMgr::monoshot_callback_function(void *pUserData,
                                         ADThreadProducer *pObj) {
-  while (!processCmd.empty()) {
-    // TODO: handle semicolon separated multiple commands
-    XmppCmdEntry cmd = processCmd.front();
+  XmppCmdEntry *pCmd = NULL;
+  while (pop_cmd(pCmd)) {
+    // processed without the lock; the gloox thread can keep queueing
+    XmppCmdEntry cmd = *pCmd;
+    delete pCmd;
 
     // std::string temp=cmd.cmdMsg;
     stringstream mystream(cmd.cmdMsg);
@@ -395,8 +413,7 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       std::string myresponse =
           "return=" + myresult + " : " + "result=" + myreturnval;
       XmppProxy.send_reply(myresponse, cmd.sender);
-      processCmd.pop_front();
-      return 0;
+      continue; // more commands may be queued
     }
     // check if it is an alias
     transform(cmd.cmdMsg.begin(), cmd.cmdMsg.end(), cmd.cmdMsg.begin(),
@@ -591,7 +608,6 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       std::string response = "return=" + resStr + " : " + "result=" + returnval;
       XmppProxy.send_reply(response, cmd.sender); // result+":"+returnval);
     }
-    processCmd.pop_front(); // after processing delete the entry
   }
   return 0;
 }
@@ -2398,19 +2414,26 @@ std::string XmppMgr::generate_ai_response(std::string &prompt) {
 }
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_count(int &count) {
+  pthread_mutex_lock(&queue_lock);
   count = Inbox.size();
+  pthread_mutex_unlock(&queue_lock);
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_msg(int index,
                                                std::string &message) {
+  RPC_SRV_RESULT res = RPC_SRV_RESULT_VALUE_OUT_OF_RANGE;
+  pthread_mutex_lock(&queue_lock);
   if (index >= 0 && (size_t)index < Inbox.size()) {
     message = Inbox[index];
-    return RPC_SRV_RESULT_SUCCESS;
-  } else
-    return RPC_SRV_RESULT_VALUE_OUT_OF_RANGE;
+    res = RPC_SRV_RESULT_SUCCESS;
+  }
+  pthread_mutex_unlock(&queue_lock);
+  return res;
 }
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_empty() {
+  pthread_mutex_lock(&queue_lock);
   Inbox.clear();
+  pthread_mutex_unlock(&queue_lock);
   return RPC_SRV_RESULT_SUCCESS;
 }
 /* ------------------------------------------------------------------------- */

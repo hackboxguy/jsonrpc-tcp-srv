@@ -225,6 +225,38 @@ TEST_CASE("V2-H1: restart while a child process is still running") {
   delete mgr;
 }
 
+// V3-L2: a retry after a failed Start() registered every method twice;
+// Start() after Stop() left a deaf server
+TEST_CASE("V3-L2: Start() retry after failure, no Start() after Stop()") {
+  int lfd = socket(AF_INET, SOCK_STREAM, 0);
+  int on = 1;
+  setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_port = htons(test_port(1));
+  REQUIRE(bind(lfd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+  REQUIRE(listen(lfd, 4) == 0);
+  ADJsonRpcMgr mgr(1, false, NULL);
+  SlowHandler h;
+  mgr.AttachRpc(&h);
+  CHECK(mgr.Start(test_port(1), 0, 0) != 0); // port busy
+  close(lfd);
+  CHECK(mgr.Start(test_port(1), 0, 0) == 0); // retry works
+  CHECK(server_alive(test_port(1)));
+  // the handler is registered once: its method still resolves
+  int fd = connect_to(test_port(1));
+  REQUIRE(fd >= 0);
+  send_all(fd, "{\"jsonrpc\":\"2.0\",\"method\":\"test_slow\",\"id\":3}");
+  Reader r;
+  std::string resp;
+  CHECK(r.next_object(fd, resp, 3000));
+  close(fd);
+  mgr.Stop();
+  CHECK(mgr.Start(test_port(1), 0, 0) != 0);
+}
+
 TEST_CASE("bind address: listening on 127.0.0.1 only") {
   ADJsonRpcMgr mgr(1, false, NULL);
   CHECK(mgr.Start(test_port(3), 0, 0, "not-an-ip") != 0);

@@ -37,6 +37,13 @@ int ADThreadedSockClient::thread_callback_function(void *pUserData,
     return -1;
   }
   while ((pCmdObj = (CmdExecutionObj *)cmd_chain.chain_get()) != NULL) {
+    // stop between commands: without cancellation, destroying the worker
+    // would otherwise wait for the whole command chain (V3-L4)
+    if (__atomic_load_n(&stop_running, __ATOMIC_SEQ_CST) ||
+        cmd_thread.stop_requested()) {
+      OBJ_MEM_DELETE(pCmdObj);
+      break;
+    }
     switch (pCmdObj->cmd_type) {
     case CLIENT_CMD_TYPE_ACTION_NO_ARG:
       run_cmd_type_action_noarg(pCmdObj, &SrvSockConn, &output_msg_chain);
@@ -137,7 +144,7 @@ int ADThreadedSockClient::start_command_execution() {
 }
 int ADThreadedSockClient::stop_command_execution() {
   if (running) {
-    stop_running = 1;
+    __atomic_store_n(&stop_running, 1, __ATOMIC_SEQ_CST);
     cmd_thread.stop_thread();
   }
   cmd_chain.remove_all();

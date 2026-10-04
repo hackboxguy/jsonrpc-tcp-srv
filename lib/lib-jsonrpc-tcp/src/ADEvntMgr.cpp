@@ -2,6 +2,7 @@
 #include "ADCommon.hpp"
 #include "ADJsonRpcClient.hpp"
 #include <algorithm>
+#include <time.h>
 ADEvntMgr::ADEvntMgr() : AckToken(0) {
   pthread_mutex_init(&lock, NULL);
   notifyThreadID = EventNotifyThread.subscribe_thread_callback(this);
@@ -67,13 +68,16 @@ int ADEvntMgr::monoshot_callback_function(void *pUserData,
   }
   return 0;
 }
-// A subscriber that is restarting must not lose its subscription because of
-// one failed delivery: it is removed only after ADEVNT_MGR_MAX_FAILURES
-// consecutive failures.
+// A subscriber that is restarting or busy must not lose its subscription:
+// it is removed only after failing continuously for ADEVNT_MGR_FAIL_WINDOW_MS
+// (and at least ADEVNT_MGR_MAX_FAILURES times).
 void ADEvntMgr::update_failure_counts(const std::vector<int> &failed,
                                       const std::vector<int> &delivered) {
   if (failed.empty() && delivered.empty())
     return;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  long now = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
   pthread_mutex_lock(&lock);
   for (size_t i = 0; i < eventList.size(); ++i) {
     EventEntry *e = eventList[i];
@@ -81,7 +85,10 @@ void ADEvntMgr::update_failure_counts(const std::vector<int> &failed,
         delivered.end())
       e->failCount = 0;
     else if (find(failed.begin(), failed.end(), e->srvToken) != failed.end()) {
-      if (++e->failCount >= ADEVNT_MGR_MAX_FAILURES) {
+      if (e->failCount++ == 0)
+        e->firstFailMs = now;
+      if (e->failCount >= ADEVNT_MGR_MAX_FAILURES &&
+          now - e->firstFailMs >= ADEVNT_MGR_FAIL_WINDOW_MS) {
         LOG_ERR_MSG_WITH_ARG("libadav:ADEvntMgr",
                              "removing event subscriber on port %d after "
                              "repeated delivery failures",
@@ -97,6 +104,7 @@ void ADEvntMgr::update_failure_counts(const std::vector<int> &failed,
 }
 int ADEvntMgr::register_event_subscription(EventEntry *pEvent, int *ack_token) {
   pEvent->failCount = 0;
+  pEvent->firstFailMs = 0;
   pEvent->deleteFlag = false;
   pthread_mutex_lock(&lock);
   if (find_if(eventList.begin(), eventList.end(), FindDuplicateEntry(pEvent)) ==

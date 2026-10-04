@@ -29,7 +29,13 @@
 #define AD_NET_SERVER_MAX_JSON_MSG_SIZE (256 * 1024)
 // how long the response thread waits for a slow reader per response; a
 // connection whose response cannot be sent in time is dropped (V2-C3)
-#define AD_NET_SERVER_SEND_TIMEOUT_MS 2000
+#define AD_NET_SERVER_SEND_TIMEOUT_MS 1000
+// a connection whose responses made the response thread wait more than this
+// in total within AD_NET_SERVER_SEND_WAIT_WINDOW_MS is dropped as well: a
+// slow reader that never stalls a full timeout must not delay all others
+// for long (V3-M4)
+#define AD_NET_SERVER_SEND_WAIT_BUDGET_MS 5000
+#define AD_NET_SERVER_SEND_WAIT_WINDOW_MS 60000
 // requests of one connection that may wait for their response; above it the
 // server stops reading from that connection until half are answered (V2-C3)
 #define AD_NET_SERVER_MAX_PENDING_PER_CONN 256
@@ -127,7 +133,11 @@ class ADNetServer : public ADNetProducer,
     // dropped by the response thread (V3-H2): no more requests are queued and
     // no responses sent; the listen thread still owns and closes the fd
     bool dead;
-    conn_pending() : count(0), paused(false), dead(false) {}
+    long wait_ms;         // send waits in the current window
+    long window_start_ms; // monotonic start of that window
+    conn_pending()
+        : count(0), paused(false), dead(false), wait_ms(0), window_start_ms(0) {
+    }
   };
   pthread_mutex_t pending_lock;
   pthread_mutex_t ctrl_lock; // serializes start/stop
@@ -168,7 +178,9 @@ class ADNetServer : public ADNetProducer,
   void send_protocol_error(int socket_descriptor);
   void close_connection(int socket_descriptor);
   int dup_if_same_client(int socket_descriptor, int cltid);
-  int send_with_deadline(int socket_descriptor, const char *buf, int len);
+  int send_with_deadline(int socket_descriptor, const char *buf, int len,
+                         long *waited_ms);
+  bool over_send_wait_budget(int cltid, long waited_ms);
   int start_listening();
   int stop_listening();
   bool IsConnectionAlive(int sock_descriptor);
