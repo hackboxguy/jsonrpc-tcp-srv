@@ -198,6 +198,71 @@ TEST_CASE("C7: 16 clients x 1000 requests, every response matches its id") {
   }
 }
 
+namespace {
+struct FloodArg {
+  int port;
+  int stop;
+  long sent;
+};
+// sends requests as fast as possible and never reads a response
+void *flood_without_reading(void *p) {
+  FloodArg *a = (FloodArg *)p;
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int small = 4096;
+  setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &small, sizeof(small));
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  addr.sin_port = htons(a->port);
+  if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+    close(fd);
+    return NULL;
+  }
+  std::string batch;
+  for (int i = 0; i < 100; i++)
+    batch += version_request(i);
+  while (!__atomic_load_n(&a->stop, __ATOMIC_SEQ_CST)) {
+    ssize_t rc =
+        send(fd, batch.data(), batch.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
+    if (rc > 0)
+      a->sent += rc;
+    else if (rc < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+      break; // the server dropped us
+    else
+      usleep(1000);
+  }
+  close(fd);
+  return NULL;
+}
+} // namespace
+
+// V2-C3: one client that never reads used to stall every other client
+TEST_CASE("V2-C3: a client that does not read does not delay others") {
+  FloodArg arg;
+  arg.port = server()->port;
+  arg.stop = 0;
+  arg.sent = 0;
+  pthread_t th;
+  pthread_create(&th, NULL, flood_without_reading, &arg);
+  usleep(500000);
+  long worst = 0;
+  for (int i = 0; i < 8; i++) {
+    long t0 = now_ms();
+    CHECK(server_alive(server()->port, 3500));
+    long took = now_ms() - t0;
+    if (took > worst)
+      worst = took;
+    usleep(250000);
+  }
+  // at most one AD_NET_SERVER_SEND_TIMEOUT_MS stall, then the client is
+  // dropped
+  CHECK(worst < 3000);
+  __atomic_store_n(&arg.stop, 1, __ATOMIC_SEQ_CST);
+  pthread_join(th, NULL);
+  CHECK(arg.sent > 0);
+}
+
 // C4: a peer that accepts and never replies must not block the client
 TEST_CASE("C4: client call against a black-hole server times out") {
   int lfd = socket(AF_INET, SOCK_STREAM, 0);

@@ -15,7 +15,16 @@ typedef struct EventEntry_t {
   int sock_id;
   char ip[512];
   bool deleteFlag;
+  int failCount; // consecutive failed deliveries (set by ADEvntMgr)
 } EventEntry;
+// Event delivery limits (finding V2-H4): a subscriber is only removed after
+// this many consecutive failed deliveries, each delivery is bounded by the
+// two timeouts, and at most ADEVNT_MGR_MAX_QUEUED events wait (oldest are
+// dropped).
+#define ADEVNT_MGR_MAX_FAILURES 5
+#define ADEVNT_MGR_CONNECT_TIMEOUT_MS 1000
+#define ADEVNT_MGR_RECEIVE_TIMEOUT_MS 1000
+#define ADEVNT_MGR_MAX_QUEUED 1024
 struct EventProcEntry {
   int eventNum;
   int eventArg;
@@ -131,6 +140,8 @@ class ADEvntMgr : public ADEvntMgrProducer, public ADThreadConsumer {
   };
   int send_event(EventEntry *pEvent, int event_num, int event_arg = -1,
                  int event_arg2 = -1);
+  void update_failure_counts(const std::vector<int> &failed,
+                             const std::vector<int> &delivered);
 
 public:
   ADEvntMgr();

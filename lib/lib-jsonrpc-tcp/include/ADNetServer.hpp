@@ -11,6 +11,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <semaphore.h>
+#include <set>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,8 +27,17 @@
 #define AD_NET_SERVER_MAX_BUFFER_SIZE 0xffff
 // upper bound for one JSON request; larger requests close the connection
 #define AD_NET_SERVER_MAX_JSON_MSG_SIZE (256 * 1024)
-// how long the response thread waits for a slow reader per response
+// how long the response thread waits for a slow reader per response; a
+// connection whose response cannot be sent in time is dropped (V2-C3)
 #define AD_NET_SERVER_SEND_TIMEOUT_MS 2000
+// requests of one connection that may wait for their response; above it the
+// server stops reading from that connection until half are answered (V2-C3)
+#define AD_NET_SERVER_MAX_PENDING_PER_CONN 256
+// TCP keepalive on accepted connections: a peer that vanished without FIN
+// is detected after about IDLE + INTVL * CNT seconds (V2-M1)
+#define AD_NET_SERVER_KEEPALIVE_IDLE_S 60
+#define AD_NET_SERVER_KEEPALIVE_INTVL_S 10
+#define AD_NET_SERVER_KEEPALIVE_CNT 5
 typedef enum ADLIB_TCP_SOCKET_TYPE_T {
   ADLIB_TCP_SOCKET_TYPE_BINARY,
   ADLIB_TCP_SOCKET_TYPE_JSON,
@@ -110,6 +120,19 @@ class ADNetServer : public ADNetProducer,
   int receive_size;
   // one stream framer per JSON connection; only used by the listen thread
   std::map<int, ADJsonStreamFramer *> framers;
+  // outstanding requests per connection (by cltid), guarded by pending_lock
+  struct conn_pending {
+    int count;
+    bool paused;
+    conn_pending() : count(0), paused(false) {}
+  };
+  pthread_mutex_t pending_lock;
+  std::map<int, conn_pending> pending;
+  std::set<int> paused_fds; // listen thread only
+  int queue_framed_requests(int socket_descriptor);
+  void response_done(int cltid);
+  void resume_paused_connections();
+  void drop_connection(int dup_fd, int socket_descriptor, int cltid);
   int id_listen_thread;
   int id_response_thread;
   ADThread listen_thread;
