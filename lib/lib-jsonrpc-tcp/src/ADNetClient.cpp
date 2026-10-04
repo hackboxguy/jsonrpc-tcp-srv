@@ -60,7 +60,7 @@ int ADNetClient::sock_connect() {
     return -1;
 
   struct sockaddr_in addr;
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  sockfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (sockfd < 0)
     return -1;
 

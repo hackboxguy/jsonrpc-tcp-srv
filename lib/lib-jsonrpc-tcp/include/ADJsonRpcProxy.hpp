@@ -163,6 +163,9 @@ public:
   ADJsonRpcProxy();
   ~ADJsonRpcProxy();
   int start_listening(int port, int socket_log);
+  int set_bind_address(const char *ip) {
+    return ServerSocket.set_bind_address(ip);
+  }
   int json_send_response(struct api_task_obj *pTaskObj);
   void stop_receiving(); // no new requests
   void stop();           // also stops the response threads; idempotent

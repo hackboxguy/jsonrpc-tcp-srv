@@ -85,8 +85,75 @@ TEST_CASE("H1: SIGTERM with busy worker threads runs the shutdown path") {
   }
 }
 
+namespace {
+// waits for the stop signal, then simulates a shutdown that hangs
+int slow_shutdown_main() {
+  ADTimer timer(100, -1);
+  timer.wait_for_exit_signal();
+  sleep(10);
+  return 0;
+}
+// a write to a pipe without reader must not kill the process
+int sigpipe_main() {
+  ADTimer timer(100, -1);
+  int p[2];
+  if (pipe(p) != 0)
+    return 1;
+  close(p[0]);
+  if (write(p[1], "x", 1) != -1 || errno != EPIPE)
+    return 1;
+  return 0;
+}
+pid_t spawn_child(const char *mode) {
+  pid_t pid = fork();
+  if (pid == 0) {
+    execl("/proc/self/exe", "test_signals", mode, (char *)NULL);
+    _exit(2);
+  }
+  return pid;
+}
+// waits up to timeout_ms for the child; returns its status or -1
+int wait_child(pid_t pid, int timeout_ms) {
+  int status = 0;
+  for (int waited = 0; waited < timeout_ms; waited += 10) {
+    if (waitpid(pid, &status, WNOHANG) == pid)
+      return status;
+    usleep(10000);
+  }
+  kill(pid, SIGKILL);
+  waitpid(pid, &status, 0);
+  return -1;
+}
+} // namespace
+
+// V2-H3: after the first SIGTERM the shutdown may hang; a second SIGTERM
+// must end the process instead of being swallowed
+TEST_CASE("V2-H3: second SIGTERM ends a hanging shutdown") {
+  pid_t pid = spawn_child("--slow-shutdown");
+  REQUIRE(pid > 0);
+  usleep(300000);
+  kill(pid, SIGTERM);
+  usleep(300000);
+  kill(pid, SIGTERM);
+  int status = wait_child(pid, 3000);
+  REQUIRE(status != -1); // still running after 3 s: second signal ignored
+  CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM);
+}
+
+TEST_CASE("V2-H3: SIGPIPE does not kill the service") {
+  pid_t pid = spawn_child("--sigpipe");
+  REQUIRE(pid > 0);
+  int status = wait_child(pid, 3000);
+  REQUIRE(status != -1);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 42);
+}
+
 int main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "--child") == 0)
     return child_main() == 0 ? 42 : 1;
+  if (argc > 1 && strcmp(argv[1], "--slow-shutdown") == 0)
+    return slow_shutdown_main() == 0 ? 42 : 1;
+  if (argc > 1 && strcmp(argv[1], "--sigpipe") == 0)
+    return sigpipe_main() == 0 ? 42 : 1;
   return adtest::run_all(argc, argv);
 }

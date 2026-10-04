@@ -226,8 +226,11 @@ int main(int argc, const char *argv[]) {
       false); // this is a system-manager, needs to be alive all the time, hence
               // dont support shutdown via rpc
 #endif
-  RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
-               CmdLine.get_emulation_mode());
+  if (RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
+                   CmdLine.get_emulation_mode()) != 0) {
+    // port busy or not available: let the supervisor restart us
+    return 1;
+  }
 
   /****************Prepare event receiver to receive events*****************/
   // TODO: wait for event-sending-service to be ready
@@ -257,7 +260,10 @@ int main(int argc, const char *argv[]) {
   RpcMgr.SetServiceReadyFlag(EJSON_RPCGMGR_READY_STATE_READY);
   // wait for sigkill or sigterm signal
   AppTimer.wait_for_exit_signal(); // loop till KILL or TERM signal is received
-  AppTimer.stop_timer();           // stop sending heart-beats to other objects
+  // stop all library threads before the handler objects below (and the
+  // locals declared after RpcMgr) are destroyed
+  RpcMgr.Stop();
+  AppTimer.stop_timer(); // joins the heart-beat threads
   if (pEventHandler != NULL)
     delete pEventHandler;
   if (pEventMonitor != NULL)

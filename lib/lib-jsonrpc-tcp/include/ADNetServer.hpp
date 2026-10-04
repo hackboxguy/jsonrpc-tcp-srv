@@ -100,6 +100,7 @@ class ADNetServer : public ADNetProducer,
   unsigned char end_server;
   int listen_port;
   int listen_sd;
+  in_addr_t bind_address; // network byte order, INADDR_ANY by default
   int wake_pipe[2]; // written by stop_receiving() to end select() at once
   int max_sd;
   struct sockaddr_in addr;
@@ -156,8 +157,12 @@ public:
   // the response is dropped if that connection was closed meanwhile, even
   // when the fd number was already reused by a new client. -1 skips the check
   int schedule_response(int socket_descriptor, int cltid, char *buf, int len);
+  // returns 0, or -1 with errno set (the reason is also logged)
   int start_listening(
       int port, int socket_log,
       ADLIB_TCP_SOCKET_TYPE socket_type = ADLIB_TCP_SOCKET_TYPE_JSON);
+  // IPv4 address to listen on (e.g. "127.0.0.1"); call before
+  // start_listening(). Default: all interfaces.
+  int set_bind_address(const char *ip);
 };
 #endif

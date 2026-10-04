@@ -41,13 +41,37 @@ void ADTimer::forward_signal_handler(int sig, siginfo_t *info, void *context) {
   }
   errno = saved_errno;
 }
+// dispositions that were active before the active ADTimer changed them;
+// restored by the destructor
+static struct sigaction saved_action[_NSIG];
+static bool saved_valid[_NSIG];
+static int set_disposition(int sig, const struct sigaction *sa) {
+  if (sig <= 0 || sig >= _NSIG)
+    return -1;
+  struct sigaction old;
+  if (sigaction(sig, sa, &old) != 0)
+    return -1;
+  if (!saved_valid[sig]) {
+    saved_action[sig] = old;
+    saved_valid[sig] = true;
+  }
+  return 0;
+}
+static void restore_dispositions() {
+  for (int sig = 1; sig < _NSIG; sig++) {
+    if (saved_valid[sig]) {
+      sigaction(sig, &saved_action[sig], NULL);
+      saved_valid[sig] = false;
+    }
+  }
+}
 int ADTimer::install_forwarder(int sig) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = &ADTimer::forward_signal_handler;
   sa.sa_flags = SA_SIGINFO | SA_RESTART;
   sigemptyset(&sa.sa_mask);
-  return sigaction(sig, &sa, NULL);
+  return set_disposition(sig, &sa);
 }
 ADTimer::ADTimer()
     : millisec_time(100), passive_mode(true), timer_tick_pending(0) {
@@ -63,6 +87,14 @@ ADTimer::ADTimer(int timer_millisec, int port) {
   const int forwarded[] = {SIGINT, SIGTERM, SIGQUIT, SIGHUP, SIGALRM, SIGIO};
   for (size_t i = 0; i < sizeof(forwarded) / sizeof(forwarded[0]); i++)
     install_forwarder(forwarded[i]);
+  // a write to a closed pipe/socket anywhere in the process (popen pipes,
+  // third-party libraries) must not kill the service (V2-H3). Note: an
+  // ignored SIGPIPE is inherited by exec'd children.
+  struct sigaction ign;
+  memset(&ign, 0, sizeof(ign));
+  ign.sa_handler = SIG_IGN;
+  sigemptyset(&ign.sa_mask);
+  set_disposition(SIGPIPE, &ign);
   custom_sig_chain.set_element_deleter(
       &chain_delete_object<ADTIMER_CUSTOM_SIG>);
   SigInfoChain.set_element_deleter(&chain_delete_object<ADTIMER_CUSTOM_SIG>);
@@ -82,12 +114,29 @@ ADTimer::ADTimer(int timer_millisec, int port) {
   CustomSigThread.start_thread();
 }
 ADTimer::~ADTimer() {
-  TimerThread.stop_thread();
-  CustomSigThread.stop_thread();
-  if (passive_mode == false)
-    __atomic_store_n(&stoptimer, 1, __ATOMIC_SEQ_CST);
+  stop();
+  if (passive_mode == false) {
+    // nothing may point at this object any more
+    restore_dispositions();
+    __atomic_store_n(&waiter_tid, (pid_t)0, __ATOMIC_SEQ_CST);
+    if (pTmpTimer == this)
+      pTmpTimer = NULL;
+  }
   custom_sig_chain.remove_all();
   SigInfoChain.remove_all();
+}
+// Stops the heartbeat: disarms the interval timer and joins the timer
+// threads, so no timer_notification()/custom_sig_notification() runs after
+// it returns. Call it before the subscribed objects are destroyed (V2-C1).
+void ADTimer::stop() {
+  if (passive_mode == false) {
+    __atomic_store_n(&stoptimer, 1, __ATOMIC_SEQ_CST);
+    struct itimerval off;
+    memset(&off, 0, sizeof(off));
+    setitimer(ITIMER_REAL, &off, NULL);
+  }
+  TimerThread.stop_thread();
+  CustomSigThread.stop_thread();
 }
 int ADTimer::test_print(void) {
   cout << "This is ADTimer" << endl;
@@ -133,11 +182,11 @@ int ADTimer::get_sigio_event() {
 int ADTimer::stop_timer() {
   if (passive_mode == true)
     return 0;
-  __atomic_store_n(&stoptimer, 1, __ATOMIC_SEQ_CST);
+  stop();
   return 0;
 }
 void ADTimer::millisec_signal_handler(int sig_no) {
-  if (__atomic_load_n(&stoptimer, __ATOMIC_SEQ_CST) == 1)
+  if (__atomic_load_n(&stoptimer, __ATOMIC_SEQ_CST) == 1 || pTmpTimer == NULL)
     return;
   pTmpTimer->notify_subscribers();
 }
@@ -204,6 +253,7 @@ int ADTimer::wait_for_exit_signal() {
       break;
     }
   }
+  allow_forced_termination();
   if (notifyPortNum != -1) {
     NOTIFY_EVENT(ADLIB_EVENT_NUM_SHUT_DOWN, -1, notifyPortNum, -1);
     usleep(100000);
@@ -215,6 +265,8 @@ int ADTimer::wait_for_exit_signal() {
   return 0;
 }
 void ADTimer::custom_signal_handler(int sig, siginfo_t *info, void *context) {
+  if (pTmpTimer == NULL)
+    return;
   pTmpTimer->notify_custom_sig_to_subscribers(sig);
 }
 int ADTimer::register_custom_signal(int custom_sig_num,
@@ -230,6 +282,8 @@ int ADTimer::register_custom_signal(int custom_sig_num,
 }
 void ADTimer::custom_signal_handler_new(int sig, siginfo_t *info,
                                         void *context) {
+  if (pTmpTimer == NULL)
+    return;
   pTmpTimer->notify_custom_sig_to_subscribers_new(info->si_int, sig);
 }
 int ADTimer::register_custom_signal_new(int custom_sig_num,
@@ -242,6 +296,28 @@ int ADTimer::register_custom_signal_new(int custom_sig_num,
     install_forwarder(custom_sig_num);
   push_custom_sig_registration(custom_sig_num);
   return 0;
+}
+// After the stop request: a further SIGINT/SIGTERM/SIGQUIT terminates the
+// process with the default action, so an operator can end a shutdown that
+// hangs (V2-H3). Copies of the first signal that are still pending are
+// consumed first.
+void ADTimer::allow_forced_termination() {
+  sigset_t stop_sigs;
+  sigemptyset(&stop_sigs);
+  sigaddset(&stop_sigs, SIGINT);
+  sigaddset(&stop_sigs, SIGTERM);
+  sigaddset(&stop_sigs, SIGQUIT);
+  struct timespec zero = {0, 0};
+  while (sigtimedwait(&stop_sigs, NULL, &zero) > 0)
+    ;
+  struct sigaction dfl;
+  memset(&dfl, 0, sizeof(dfl));
+  dfl.sa_handler = SIG_DFL;
+  sigemptyset(&dfl.sa_mask);
+  set_disposition(SIGINT, &dfl);
+  set_disposition(SIGTERM, &dfl);
+  set_disposition(SIGQUIT, &dfl);
+  pthread_sigmask(SIG_UNBLOCK, &stop_sigs, NULL);
 }
 void ADTimer::forced_exit() {
   __atomic_store_n(&received_user_stop_sig, 1, __ATOMIC_SEQ_CST);

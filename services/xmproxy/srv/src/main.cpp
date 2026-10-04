@@ -128,8 +128,11 @@ int main(int argc, const char *argv[]) {
   RpcMgr.AttachHeartBeat(&AppTimer); // attach 100ms heartbeat to ADJsonRpcMgr
   // RpcMgr.SupportShutdownRpc(false);//uncomment if this service is required to
   // ignore shutdown-rpc
-  RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
-               CmdLine.get_emulation_mode());
+  if (RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
+                   CmdLine.get_emulation_mode()) != 0) {
+    // port busy or not available: let the supervisor restart us
+    return 1;
+  }
 
   char filepath[512];
   CmdLine.get_login_filepath(filepath);
@@ -149,8 +152,11 @@ int main(int argc, const char *argv[]) {
   RpcMgr.SetServiceReadyFlag(EJSON_RPCGMGR_READY_STATE_READY);
   // wait for sigkill or sigterm signal
   AppTimer.wait_for_exit_signal(); // loop till KILL or TERM signal is received
-  XmpManager.Stop();               // disconnect the xmpp server
-  AppTimer.stop_timer();           // stop sending heart-beats to other objects
+  // stop all library threads before the RPC handlers and the event receiver
+  // (locals declared after RpcMgr) are destroyed
+  RpcMgr.Stop();
+  AppTimer.stop_timer(); // joins the heart-beat threads
+  XmpManager.Stop();     // disconnect the xmpp server
   // XmpManager.Stop();//disconnect the xmpp server
   return 0;
 }

@@ -77,6 +77,7 @@ private:
                                         void *context);
   static void forward_signal_handler(int sig, siginfo_t *info, void *context);
   static int install_forwarder(int sig);
+  void allow_forced_termination();
   int push_custom_sig_registration(int sig);
   int notify_registered_signals(int sig, siginfo_t *info);
   ADThread TimerThread, CustomSigThread;
@@ -97,7 +98,8 @@ public:
   int test_print();
   int restart_millisec_timer(int new_millisec);
   int wait_for_exit_signal();
-  int stop_timer();
+  int stop_timer(); // same as stop()
+  void stop();
   int get_100ms_heartbeat();
   int get_sigio_event();
   int register_custom_signal(int custom_sig_num, ADTimerConsumer *pConsumer);

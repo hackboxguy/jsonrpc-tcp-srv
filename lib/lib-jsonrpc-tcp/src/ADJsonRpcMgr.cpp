@@ -101,7 +101,6 @@ RPC_SRV_RESULT ADJsonRpcMgr::run_work(int cmd, unsigned char *pWorkData,
 }
 int ADJsonRpcMgr::Start(int port, int socket_log, int emulation) {
   char rpc_name[1024];
-  Proxy.start_listening(port, socket_log);
   TaskWorkerSetPortNumber(port);
   JMapper.attach_rpc_method(EJSON_RPCGMGR_GET_TASK_STS,
                             (char *)RPCMGR_RPC_TASK_STS_GET);
@@ -158,7 +157,17 @@ int ADJsonRpcMgr::Start(int port, int socket_log, int emulation) {
     rpc->parent_index = i + EJSON_RPCGMGR_CMD_END;
     JMapper.attach_rpc_method(i + EJSON_RPCGMGR_CMD_END, rpc_name);
   }
+  // listen only after every method is registered (the listen thread reads
+  // the method list); a failure (e.g. port in use) is reported to the caller
+  if (Proxy.start_listening(port, socket_log) != 0)
+    return -1;
   return 0;
+}
+int ADJsonRpcMgr::Start(int port, int socket_log, int emulation,
+                        const char *bind_ip) {
+  if (bind_ip != NULL && Proxy.set_bind_address(bind_ip) != 0)
+    return -1;
+  return Start(port, socket_log, emulation);
 }
 int ADJsonRpcMgr::create_req_obj(JsonDataCommObj *pReq) {
   RPC_SRV_REQ *pPanelReq = NULL;

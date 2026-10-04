@@ -39,23 +39,23 @@ int ADNetServer::free_chain_element_data(void *element, ADChainProducer *pObj) {
     ARRAY_MEM_DELETE(obj->data_buffer);
   return 0;
 }
-// Returns a private dup() of the client socket if sock_descriptor still
-// belongs to the connection identified by cltid, else -1. The check and the
-// dup() happen under the client-info lock, and the listen thread deregisters
-// a connection before it closes the fd, so the dup always refers to the
-// original connection even if the fd number gets reused afterwards.
+// Returns a private close-on-exec dup of the client socket if sock_descriptor
+// still belongs to the connection identified by cltid, else -1. The check and
+// the dup() happen under the client-info lock, and the listen thread
+// deregisters a connection before it closes the fd, so the dup always refers to
+// the original connection even if the fd number gets reused afterwards.
 int ADNetServer::dup_if_same_client(int sock_descriptor, int cltid) {
   int fd = -1;
   if (cltid < 0) {
     if (IsConnectionAlive(sock_descriptor))
-      fd = dup(sock_descriptor);
+      fd = fcntl(sock_descriptor, F_DUPFD_CLOEXEC, 0);
     return fd;
   }
   clientInfo_chain.chain_lock();
   net_data_obj *info =
       (net_data_obj *)clientInfo_chain.chain_get_by_ident(sock_descriptor);
   if (info != NULL && info->ident == cltid)
-    fd = dup(sock_descriptor);
+    fd = fcntl(sock_descriptor, F_DUPFD_CLOEXEC, 0);
   clientInfo_chain.chain_unlock();
   return fd;
 }
@@ -161,7 +161,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
         } else if (i == listen_sd) {
           for (;;) {
             in_len = sizeof(in_addr);
-            new_sd = accept(listen_sd, &in_addr, &in_len);
+            new_sd = accept4(listen_sd, &in_addr, &in_len, SOCK_CLOEXEC);
             if (new_sd < 0) {
               if (errno == EINTR || errno == ECONNABORTED)
                 continue; // retry
@@ -250,6 +250,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
 }
 ADNetServer::ADNetServer() {
   wake_pipe[0] = wake_pipe[1] = -1;
+  bind_address = htonl(INADDR_ANY);
   socketlog = 0;
   connected = 0;
   listen_port = AD_NET_SERVER_DEFAULT_LISTEN_PORT;
@@ -259,6 +260,7 @@ ADNetServer::ADNetServer() {
 }
 ADNetServer::ADNetServer(int port) {
   wake_pipe[0] = wake_pipe[1] = -1;
+  bind_address = htonl(INADDR_ANY);
   socketlog = 0;
   connected = 0;
   listen_port = port;
@@ -267,6 +269,13 @@ ADNetServer::ADNetServer(int port) {
   initialize_helpers();
 }
 ADNetServer::~ADNetServer() { stop_listening(); }
+int ADNetServer::set_bind_address(const char *ip) {
+  struct in_addr a;
+  if (ip == NULL || inet_pton(AF_INET, ip, &a) != 1)
+    return -1;
+  bind_address = a.s_addr;
+  return 0;
+}
 int ADNetServer::start_listening(int port, int socket_log,
                                  ADLIB_TCP_SOCKET_TYPE socket_type) {
   socketlog = socket_log;
@@ -274,47 +283,47 @@ int ADNetServer::start_listening(int port, int socket_log,
   sock_type = socket_type;
   return start_listening();
 }
+// logs a start-up failure to syslog (with errno) and stdout
+static int start_failed(const char *what, int fd, int port) {
+  int err = errno;
+  char msg[160];
+  snprintf(msg, sizeof(msg), "listen on port %d: %s failed: %s", port, what,
+           strerror(err));
+  LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer", "%s", msg);
+  printf("ADNetServer: %s\n", msg);
+  if (fd >= 0)
+    close(fd);
+  errno = err;
+  return -1;
+}
 int ADNetServer::start_listening() {
   int rc;
   int on = 1;
-  listen_sd = socket(AF_INET, SOCK_STREAM, 0);
-  if (listen_sd < 0) {
-    printf("socket() failed");
-    return -1;
-  }
+  if (connected)
+    return -1; // already listening
+  // close-on-exec: children started with popen()/system() must not inherit
+  // the listening socket (finding V2-H1)
+  listen_sd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (listen_sd < 0)
+    return start_failed("socket()", -1, listen_port);
   rc = setsockopt(listen_sd, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
-  if (rc < 0) {
-    printf("setsockopt() failed");
-    close(listen_sd);
-    return -1;
-  }
+  if (rc < 0)
+    return start_failed("setsockopt()", listen_sd, listen_port);
   rc = ioctl(listen_sd, FIONBIO, (char *)&on);
-  if (rc < 0) {
-    printf("ioctl() failed");
-    close(listen_sd);
-    return -1;
-  }
+  if (rc < 0)
+    return start_failed("ioctl()", listen_sd, listen_port);
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_addr.s_addr = bind_address;
   addr.sin_port = htons(listen_port);
   rc = bind(listen_sd, (struct sockaddr *)&addr, sizeof(addr));
-  if (rc < 0) {
-    printf("bind() failed");
-    close(listen_sd);
-    return -1;
-  }
+  if (rc < 0)
+    return start_failed("bind()", listen_sd, listen_port);
   rc = listen(listen_sd, 32);
-  if (rc < 0) {
-    printf("listen() failed");
-    close(listen_sd);
-    return -1;
-  }
-  if (pipe(wake_pipe) != 0) {
-    printf("pipe() failed");
-    close(listen_sd);
-    return -1;
-  }
+  if (rc < 0)
+    return start_failed("listen()", listen_sd, listen_port);
+  if (pipe2(wake_pipe, O_CLOEXEC) != 0)
+    return start_failed("pipe()", listen_sd, listen_port);
   FD_ZERO(&master_set);
   max_sd = listen_sd > wake_pipe[0] ? listen_sd : wake_pipe[0];
   FD_SET(listen_sd, &master_set);

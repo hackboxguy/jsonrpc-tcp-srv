@@ -202,20 +202,35 @@ public:
   virtual void ReceiveEvent(int cltToken, int evntNum, int evntArg,
                             int evntArg2) = 0;
 };
+// rpclist and eventReceiver are appended by the service (possibly after
+// Start()) and read by the RPC, task and event threads: all access holds
+// list_lock. Entries are never removed, so returned pointers stay valid.
 class ADJsonRpcMgrProducer {
   std::vector<ADJsonRpcMgrConsumer *> rpclist;
   std::vector<ADJsonRpcMgrConsumer *> eventReceiver;
+  pthread_mutex_t list_lock;
+  struct ListGuard {
+    pthread_mutex_t *m;
+    explicit ListGuard(pthread_mutex_t *mtx) : m(mtx) { pthread_mutex_lock(m); }
+    ~ListGuard() { pthread_mutex_unlock(m); }
+  };
 
 protected:
   ADTaskWorker AsyncTaskWorker;
   ADEvntMgr EventMgr;
   void notify_event_receivers(int cltToken, int evntNum, int evntArg,
                               int evntArg2) {
+    std::vector<ADJsonRpcMgrConsumer *> receivers;
+    {
+      ListGuard g(&list_lock);
+      receivers = eventReceiver;
+    }
     std::vector<ADJsonRpcMgrConsumer *>::iterator iter;
-    for (iter = eventReceiver.begin(); iter != eventReceiver.end(); ++iter)
+    for (iter = receivers.begin(); iter != receivers.end(); ++iter)
       (*iter)->ReceiveEvent(cltToken, evntNum, evntArg, evntArg2);
   }
   ADJsonRpcMgrConsumer *getRpcHandler(std::string rpcName) {
+    ListGuard g(&list_lock);
     std::vector<ADJsonRpcMgrConsumer *>::iterator iter;
     for (iter = rpclist.begin(); iter != rpclist.end(); ++iter) {
       if ((*iter)->GetRpcName() == rpcName)
@@ -224,11 +239,13 @@ protected:
     return NULL;
   }
   ADJsonRpcMgrConsumer *getRpcHandler(int index) {
-    std::vector<ADJsonRpcMgrConsumer *>::iterator iter =
-        rpclist.begin() + index;
-    return (*iter);
+    ListGuard g(&list_lock);
+    if (index < 0 || index >= (int)rpclist.size())
+      return NULL;
+    return rpclist[index];
   }
   ADJsonRpcMgrConsumer *getRpcHandlerByParentIndex(int index) {
+    ListGuard g(&list_lock);
     std::vector<ADJsonRpcMgrConsumer *>::iterator iter;
     for (iter = rpclist.begin(); iter != rpclist.end(); ++iter) {
       if ((*iter)->GetRpcParentIndex() == index)
@@ -237,12 +254,14 @@ protected:
     return NULL;
   }
   int setRpcDebugLogFlag(bool debuglog) {
+    ListGuard g(&list_lock);
     std::vector<ADJsonRpcMgrConsumer *>::iterator iter;
     for (iter = rpclist.begin(); iter != rpclist.end(); ++iter)
       (*iter)->set_debug_log_flag(debuglog);
     return 0;
   }
   ADJsonRpcMgrConsumer *getCmnRpcHandler() {
+    ListGuard g(&list_lock);
     std::vector<ADJsonRpcMgrConsumer *>::iterator iter;
     for (iter = rpclist.begin(); iter != rpclist.end(); ++iter) {
       if ((*iter)->get_cmn_rpc_handler_flag() == true)
@@ -252,12 +271,21 @@ protected:
   }
 
 public:
-  virtual ~ADJsonRpcMgrProducer(){};
-  void AttachRpc(ADJsonRpcMgrConsumer *pRpc) { rpclist.push_back(pRpc); }
+  ADJsonRpcMgrProducer() { pthread_mutex_init(&list_lock, NULL); }
+  virtual ~ADJsonRpcMgrProducer() { pthread_mutex_destroy(&list_lock); };
+  // RPC handlers are registered as methods in Start(): attach them before.
+  void AttachRpc(ADJsonRpcMgrConsumer *pRpc) {
+    ListGuard g(&list_lock);
+    rpclist.push_back(pRpc);
+  }
   void AttachEventReceiver(ADJsonRpcMgrConsumer *pReceiver) {
+    ListGuard g(&list_lock);
     eventReceiver.push_back(pReceiver);
   }
-  int get_total_attached_rpcs() { return rpclist.size(); }
+  int get_total_attached_rpcs() {
+    ListGuard g(&list_lock);
+    return rpclist.size();
+  }
   int MapJsonToBinary(JsonDataCommObj *pReq) {
     if ((pReq->cmd_index - EJSON_RPCGMGR_CMD_END) >= get_total_attached_rpcs())
       return -1;
@@ -443,10 +471,18 @@ public:
   ADJsonRpcMgr(int ver, bool debuglog = false, ADCMN_DEV_INFO *pDev = NULL);
   ~ADJsonRpcMgr();
   int AttachHeartBeat(ADTimer *pTimer);
+  // Returns 0, or -1 if the port cannot be opened (the reason is logged);
+  // a service should then exit with an error so its supervisor restarts it.
   int Start(int port, int socket_log, int emulation);
+  // same, listening only on bind_ip (e.g. "127.0.0.1")
+  int Start(int port, int socket_log, int emulation, const char *bind_ip);
   // Stops all threads in pipeline order (network input, RPC handlers, task
   // worker, event threads, responses). Idempotent; also called by the
   // destructor before any member is destroyed (finding H2).
+  // RULE: call Stop() before any object attached with AttachRpc(),
+  // AttachEventReceiver() or AttachHeartBeat() is destroyed. Objects declared
+  // after the manager in main() are destroyed before it, while the manager's
+  // threads still call them (finding V2-C1).
   void Stop();
   int SupportShutdownRpc(bool support);
   int SetServiceReadyFlag(EJSON_RPCGMGR_READY_STATE sts);

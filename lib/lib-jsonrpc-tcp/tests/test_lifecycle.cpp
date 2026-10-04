@@ -12,6 +12,9 @@ struct LoadArg {
   int port;
   int stop;
   int answered;
+  const char *method; // second method of the mix
+  LoadArg(int p, const char *m = "trigger_settings_save")
+      : port(p), stop(0), answered(0), method(m) {}
 };
 void *load_client(void *p) {
   LoadArg *a = (LoadArg *)p;
@@ -31,8 +34,7 @@ void *load_client(void *p) {
       else {
         char buf[128];
         snprintf(buf, sizeof(buf),
-                 "{\"jsonrpc\":\"2.0\",\"method\":\"trigger_settings_save\","
-                 "\"id\":%d}",
+                 "{\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"id\":%d}", a->method,
                  id++);
         all += buf;
       }
@@ -57,10 +59,7 @@ TEST_CASE("H2: destroy the RPC manager under load, 20 times") {
     REQUIRE(mgr->Start(port, 0, 0) == 0);
     const int N = 8;
     pthread_t th[N];
-    LoadArg arg;
-    arg.port = port;
-    arg.stop = 0;
-    arg.answered = 0;
+    LoadArg arg(port);
     for (int i = 0; i < N; i++)
       pthread_create(&th[i], NULL, load_client, &arg);
     usleep(50000);
@@ -73,6 +72,98 @@ TEST_CASE("H2: destroy the RPC manager under load, 20 times") {
       pthread_join(th[i], NULL);
     CHECK(arg.answered > 0);
   }
+}
+
+namespace {
+// a service RPC handler; every call takes a little time on ReqThread
+class SlowHandler : public ADJsonRpcMgrConsumer {
+public:
+  int calls;
+  SlowHandler()
+      : ADJsonRpcMgrConsumer("test_slow", 0, false, false), calls(0) {}
+  virtual int MapJsonToBinary(JsonDataCommObj *pReq, int index) {
+    __atomic_add_fetch(&calls, 1, __ATOMIC_SEQ_CST);
+    usleep(200);
+    return -1; // answered with an error reply, enough for the test
+  }
+  virtual int MapBinaryToJson(JsonDataCommObj *pReq, int index) { return 0; }
+  virtual int ProcessWork(JsonDataCommObj *pReq, int index,
+                          ADJsonRpcMgrProducer *pObj) {
+    return 0;
+  }
+  virtual RPC_SRV_RESULT ProcessWorkAsync(int index, unsigned char *pData) {
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  virtual void ReceiveEvent(int cltToken, int evntNum, int evntArg,
+                            int evntArg2) {}
+};
+} // namespace
+
+// V2-C1: services declare their handlers after the manager, so they are
+// destroyed first. After Stop() no library thread may call them any more.
+TEST_CASE("V2-C1: handler destroyed after Stop() while clients keep sending") {
+  int port = test_port();
+  for (int round = 0; round < 10; round++) {
+    ADJsonRpcMgr *mgr = new ADJsonRpcMgr(1, false, NULL);
+    SlowHandler *h = new SlowHandler;
+    mgr->AttachRpc(h);
+    mgr->AttachEventReceiver(h);
+    REQUIRE(mgr->Start(port, 0, 0) == 0);
+    const int N = 8;
+    pthread_t th[N];
+    LoadArg arg(port, "test_slow");
+    for (int i = 0; i < N; i++)
+      pthread_create(&th[i], NULL, load_client, &arg);
+    usleep(50000);
+    mgr->Stop();
+    CHECK(__atomic_load_n(&h->calls, __ATOMIC_SEQ_CST) > 0);
+    delete h; // what main() does when it returns
+    usleep(20000);
+    __atomic_store_n(&arg.stop, 1, __ATOMIC_SEQ_CST);
+    for (int i = 0; i < N; i++)
+      pthread_join(th[i], NULL);
+    delete mgr;
+  }
+}
+
+// V2-H1: Start() used to return 0 although nothing was listening
+TEST_CASE("V2-H1: Start() on a busy port returns an error") {
+  int lfd = socket(AF_INET, SOCK_STREAM, 0);
+  REQUIRE(lfd >= 0);
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_port = htons(test_port(1));
+  REQUIRE(bind(lfd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+  REQUIRE(listen(lfd, 4) == 0);
+  ADJsonRpcMgr mgr(1, false, NULL);
+  CHECK(mgr.Start(test_port(1), 0, 0) != 0);
+  close(lfd);
+}
+
+// V2-H1: a child started by a handler used to inherit the listening socket,
+// so the service could not bind its port again while the child lived
+TEST_CASE("V2-H1: restart while a child process is still running") {
+  int port = test_port(2);
+  ADJsonRpcMgr *mgr = new ADJsonRpcMgr(1, false, NULL);
+  REQUIRE(mgr->Start(port, 0, 0) == 0);
+  REQUIRE(server_alive(port));
+  // the child lives longer than the first server instance
+  REQUIRE(system("sleep 3 &") == 0);
+  delete mgr;
+  mgr = new ADJsonRpcMgr(1, false, NULL);
+  CHECK(mgr->Start(port, 0, 0) == 0);
+  CHECK(server_alive(port));
+  delete mgr;
+}
+
+TEST_CASE("bind address: listening on 127.0.0.1 only") {
+  ADJsonRpcMgr mgr(1, false, NULL);
+  CHECK(mgr.Start(test_port(3), 0, 0, "not-an-ip") != 0);
+  ADJsonRpcMgr mgr2(1, false, NULL);
+  REQUIRE(mgr2.Start(test_port(3), 0, 0, "127.0.0.1") == 0);
+  CHECK(server_alive(test_port(3)));
 }
 
 TEST_CASE("H2: Stop() is idempotent and the destructor still works") {
