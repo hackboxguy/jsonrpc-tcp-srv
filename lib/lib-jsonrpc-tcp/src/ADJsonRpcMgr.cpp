@@ -1,6 +1,8 @@
 #include "ADJsonRpcMgr.hpp"
 #include "ADCmnPortList.h"
 ADJsonRpcMgr::ADJsonRpcMgr(int ver, bool debuglog, ADCMN_DEV_INFO *pDev) {
+  myTimer = NULL;
+  stopped = false;
   pDevInfo = pDev;
   svnVersion = ver;
   ServiceDebugFlag = debuglog;
@@ -8,11 +10,26 @@ ADJsonRpcMgr::ADJsonRpcMgr(int ver, bool debuglog, ADCMN_DEV_INFO *pDev) {
   JMapper.AttachMapper(this);
   JMapper.AttachWorker(this);
   AsyncTaskWorker.attach_helper(this);
+  AsyncTaskWorker.set_event_sink(this);
   EventMgr.AttachReceiver(this);
   shutdown_support = true;
   ServiceReadyFlag = EJSON_RPCGMGR_READY_STATE_NOT_READY;
 }
-ADJsonRpcMgr::~ADJsonRpcMgr() {}
+ADJsonRpcMgr::~ADJsonRpcMgr() { Stop(); }
+void ADJsonRpcMgr::Stop() {
+  if (stopped)
+    return;
+  stopped = true;
+  Proxy.stop_receiving(); // 1. no new requests
+  JMapper.stop();         // 2. RPC handlers
+  AsyncTaskWorker.stop(); // 3. async tasks
+  EventMgr.stop();        // 4. event delivery
+  Proxy.stop();           // 5+6. replies and the network response thread
+}
+// task completion is delivered in-process (no TCP round trip to ourselves)
+void ADJsonRpcMgr::task_worker_event(int evntNum, int evntArg, int evntArg2) {
+  EventMgr.notify_event(evntNum, evntArg, evntArg2);
+}
 int ADJsonRpcMgr::AttachHeartBeat(ADTimer *pTimer) {
   pTimer->subscribe_timer_notification(this);
   myTimer = pTimer;
@@ -41,39 +58,40 @@ RPC_SRV_RESULT ADJsonRpcMgr::run_work(int cmd, unsigned char *pWorkData,
     case EJSON_RPCGMGR_SHUTDOWN_SERVICE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
-      myTimer->forced_exit();
-      OBJ_MEM_DELETE(pWorkData);
+      if (myTimer != NULL)
+        myTimer->forced_exit();
+      OBJ_MEM_DELETE(pPacket); // allocated as RPCMGR_TASK_STS_PACKET
       ret_val = RPC_SRV_RESULT_SUCCESS;
     } break;
     case EJSON_RPCGMGR_TRIGGER_DATASAVE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket); // allocated as RPCMGR_TASK_STS_PACKET
     } break;
     case EJSON_RPCGMGR_TRIGGER_FACTORY_STORE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket); // allocated as RPCMGR_TASK_STS_PACKET
     } break;
     case EJSON_RPCGMGR_TRIGGER_FACTORY_RESTORE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket); // allocated as RPCMGR_TASK_STS_PACKET
     } break;
     case EJSON_RPCGMGR_TRIGGER_RUN: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket); // allocated as RPCMGR_TASK_STS_PACKET
     } break;
     case EJSON_RPCMGR_SET_DEVOP_STATE: {
       RPCMGR_TASK_STS_PACKET *pPacket;
       pPacket = (RPCMGR_TASK_STS_PACKET *)pWorkData;
       ret_val = CmnRpcHandler(cmd, pWorkData);
-      OBJ_MEM_DELETE(pWorkData);
+      OBJ_MEM_DELETE(pPacket); // allocated as RPCMGR_TASK_STS_PACKET
     } break;
     default:
       break;
@@ -453,6 +471,8 @@ int ADJsonRpcMgr::process_get_task_status(RPC_SRV_REQ *pReq) {
   char errMsg[255];
   pReq->result =
       AsyncTaskWorker.get_task_status(pPacket->taskID, &taskSts, errMsg);
+  if (taskSts < 0 || taskSts >= (int)RPC_SRV_RESULT_NONE)
+    taskSts = (int)RPC_SRV_RESULT_UNKNOWN; // H4: bound the table index
   strcpy(pPacket->task_sts, status_table[taskSts]);
   return 0;
 }

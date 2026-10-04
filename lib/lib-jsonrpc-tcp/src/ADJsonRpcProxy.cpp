@@ -73,10 +73,16 @@ ADJsonRpcProxy::ADJsonRpcProxy() {
   RespThread.start_thread();
 }
 ADJsonRpcProxy::~ADJsonRpcProxy() {
+  stop();
   cout << "ADJsonRpcProxy: total_req_received=" << total_req_received
        << " total_res_sent=" << total_res_sent << endl;
-  RespThread.stop_thread();
   RespChain.remove_all();
+}
+void ADJsonRpcProxy::stop_receiving() { ServerSocket.stop_receiving(); }
+void ADJsonRpcProxy::stop() {
+  ServerSocket.stop_receiving();
+  RespThread.stop_thread();
+  ServerSocket.stop();
 }
 #include <stdio.h>
 #include <stdlib.h>

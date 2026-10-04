@@ -337,10 +337,12 @@ public:
 class ADJsonRpcMgr : public ADJsonRpcMgrProducer,
                      public ADJsonRpcMapConsumer,
                      public ADTaskWorkerConsumer,
+                     public ADTaskWorkerEventSink,
                      public ADTimerConsumer,
                      public ADCmnStringProcessor,
                      public ADEvntMgrConsumer {
   ADTimer *myTimer;
+  bool stopped;
   ADJsonRpcProxy Proxy;
   ADJsonRpcMapper JMapper;
   int svnVersion;
@@ -359,6 +361,7 @@ class ADJsonRpcMgr : public ADJsonRpcMgrProducer,
   virtual int custom_sig_notification(int signum) { return 0; };
   virtual int receive_events(int cltToken, int evntNum, int evntArg,
                              int evntArg2);
+  virtual void task_worker_event(int evntNum, int evntArg, int evntArg2);
   int MyMapJsonToBinary(JsonDataCommObj *pReq);
   int MyMapBinaryToJson(JsonDataCommObj *pReq);
   int MyProcessWork(JsonDataCommObj *pReq);
@@ -442,6 +445,10 @@ public:
   ~ADJsonRpcMgr();
   int AttachHeartBeat(ADTimer *pTimer);
   int Start(int port, int socket_log, int emulation);
+  // Stops all threads in pipeline order (network input, RPC handlers, task
+  // worker, event threads, responses). Idempotent; also called by the
+  // destructor before any member is destroyed (finding H2).
+  void Stop();
   int SupportShutdownRpc(bool support);
   int SetServiceReadyFlag(EJSON_RPCGMGR_READY_STATE sts);
 };

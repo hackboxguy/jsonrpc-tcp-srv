@@ -149,7 +149,9 @@ int ADNetServer::thread_callback_function(void *pUserData,
     for (i = 0; i <= max_sd && desc_ready > 0; ++i) {
       if (FD_ISSET(i, &working_set)) {
         desc_ready -= 1;
-        if (i == listen_sd) {
+        if (i == wake_pipe[0]) {
+          break; // stop_receiving(): end_server is set
+        } else if (i == listen_sd) {
           for (;;) {
             in_len = sizeof(in_addr);
             new_sd = accept(listen_sd, &in_addr, &in_len);
@@ -161,7 +163,8 @@ int ADNetServer::thread_callback_function(void *pUserData,
                 LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
                                      "accept() failed errno=%d", errno);
                 if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK) {
-                  end_server = AD_NETWORK_TRUE;
+                  __atomic_store_n(&end_server, (unsigned char)AD_NETWORK_TRUE,
+                                   __ATOMIC_SEQ_CST);
                 } else
                   usleep(100000); // back off; connection stays queued
               }
@@ -227,7 +230,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
             close_connection(i);
             FD_CLR(i, &master_set);
             if (i == max_sd) {
-              while (max_sd > listen_sd &&
+              while (max_sd > 0 &&
                      FD_ISSET(max_sd, &master_set) == AD_NETWORK_FALSE)
                 max_sd -= 1;
             }
@@ -239,6 +242,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
   return 0;
 }
 ADNetServer::ADNetServer() {
+  wake_pipe[0] = wake_pipe[1] = -1;
   socketlog = 0;
   connected = 0;
   listen_port = AD_NET_SERVER_DEFAULT_LISTEN_PORT;
@@ -247,6 +251,7 @@ ADNetServer::ADNetServer() {
   initialize_helpers();
 }
 ADNetServer::ADNetServer(int port) {
+  wake_pipe[0] = wake_pipe[1] = -1;
   socketlog = 0;
   connected = 0;
   listen_port = port;
@@ -298,35 +303,52 @@ int ADNetServer::start_listening() {
     close(listen_sd);
     return -1;
   }
+  if (pipe(wake_pipe) != 0) {
+    printf("pipe() failed");
+    close(listen_sd);
+    return -1;
+  }
   FD_ZERO(&master_set);
-  max_sd = listen_sd;
+  max_sd = listen_sd > wake_pipe[0] ? listen_sd : wake_pipe[0];
   FD_SET(listen_sd, &master_set);
+  FD_SET(wake_pipe[0], &master_set);
   end_server = AD_NETWORK_FALSE;
   response_thread.start_thread();
   listen_thread.start_thread();
   connected = 1;
   return 0;
 }
+int ADNetServer::stop() { return stop_listening(); }
+int ADNetServer::stop_receiving() {
+  if (connected == 0)
+    return 0;
+  __atomic_store_n(&end_server, (unsigned char)AD_NETWORK_TRUE,
+                   __ATOMIC_SEQ_CST);
+  char wake = 1;
+  if (write(wake_pipe[1], &wake, 1) < 0) {
+    ; // the 1 s select timeout ends the loop anyway
+  }
+  listen_thread.stop_thread();
+  return 0;
+}
 int ADNetServer::stop_listening() {
   if (connected == 0)
     return 0;
-  // cooperative stop: the listen loop checks end_server at least once per
-  // second (select timeout); stop input first, then the response sender
-  __atomic_store_n(&end_server, (unsigned char)AD_NETWORK_TRUE,
-                   __ATOMIC_SEQ_CST);
-  listen_thread.stop_thread();
+  // cooperative stop: input first, then the response sender
+  stop_receiving();
   response_thread.stop_thread();
   request_chain.remove_all();
   response_chain.remove_all();
   clientInfo_chain.remove_all();
   for (int i = 0; i <= max_sd; ++i) {
     if (FD_ISSET(i, &master_set)) {
-      if (i == listen_sd)
+      if (i == listen_sd || i == wake_pipe[0])
         close(i);
       else
         close_connection(i);
     }
   }
+  close(wake_pipe[1]);
   connected = 0;
   return 0;
 }

@@ -155,5 +155,7 @@ public:
   ~ADJsonRpcProxy();
   int start_listening(int port, int socket_log);
   int json_send_response(struct api_task_obj *pTaskObj);
+  void stop_receiving(); // no new requests
+  void stop();           // also stops the response threads; idempotent
 };
 #endif

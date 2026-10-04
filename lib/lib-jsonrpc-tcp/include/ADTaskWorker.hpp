@@ -28,6 +28,16 @@ typedef struct WORK_CMD_TASK_IN_PROG_T {
   RPC_SRV_RESULT taskSts;
   char task_err_message[255];
 } WORK_CMD_TASK_IN_PROG;
+// Receives the 'task done' event of PRESERVE tasks in-process. Without a
+// sink the worker falls back to NOTIFY_EVENT, a TCP RPC to its own port,
+// which needs the (single) RPC thread to be free (finding H3).
+class ADTaskWorkerEventSink {
+public:
+  virtual void task_worker_event(int evntNum, int evntArg, int evntArg2) = 0;
+  virtual ~ADTaskWorkerEventSink() {};
+};
+// completed PRESERVE tasks nobody polls are evicted beyond this (H4)
+#define ADTASK_WORKER_MAX_INPROG_TASKS 256
 class ADTaskWorkerProducer;
 class ADTaskWorkerConsumer {
 public:
@@ -72,6 +82,8 @@ class ADTaskWorker : public ADTaskWorkerProducer,
   ADGenericChain work_inprog_chain;
   int work_chain_id;
   int work_inprog_chain_id;
+  ADTaskWorkerEventSink *pEventSink;
+  void evict_completed_tasks();
   virtual int identify_chain_element(void *element, int ident,
                                      ADChainProducer *pObj);
   virtual int double_identify_chain_element(void *element, int ident1,
@@ -89,6 +101,8 @@ class ADTaskWorker : public ADTaskWorkerProducer,
 public:
   ADTaskWorker();
   ~ADTaskWorker();
+  void stop(); // stops the worker thread; idempotent
+  void set_event_sink(ADTaskWorkerEventSink *pSink) { pEventSink = pSink; }
   int notifyPortNum;
   RPC_SRV_RESULT get_task_status(int taskID, int *taskSts, char *errMsg);
   int is_command_in_progress(int cmd);

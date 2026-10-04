@@ -59,9 +59,10 @@ ADJsonRpcMapper::ADJsonRpcMapper() {
   ReqThread.start_thread();
 }
 ADJsonRpcMapper::~ADJsonRpcMapper() {
-  ReqThread.stop_thread();
+  stop();
   ReqChain.remove_all();
 }
+void ADJsonRpcMapper::stop() { ReqThread.stop_thread(); }
 int ADJsonRpcMapper::AttachProxy(ADJsonRpcProxy *pJProxy) {
   pJsonProxy = pJProxy;
   return 0;

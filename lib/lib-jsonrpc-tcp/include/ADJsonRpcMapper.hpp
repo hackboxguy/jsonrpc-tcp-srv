@@ -83,6 +83,7 @@ public:
   ADJsonRpcMapper();
   ~ADJsonRpcMapper();
   int AttachProxy(ADJsonRpcProxy *pJProxy);
+  void stop(); // stops the request thread; idempotent
   int attach_rpc_method(int index, char *method_name);
 };
 #endif

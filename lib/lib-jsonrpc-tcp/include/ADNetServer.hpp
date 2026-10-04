@@ -95,6 +95,7 @@ class ADNetServer : public ADNetProducer,
   unsigned char end_server;
   int listen_port;
   int listen_sd;
+  int wake_pipe[2]; // written by stop_receiving() to end select() at once
   int max_sd;
   struct sockaddr_in addr;
   struct timeval timeout;
@@ -140,6 +141,11 @@ public:
   ADNetServer();
   ADNetServer(int port);
   ~ADNetServer();
+  // stops accepting and reading (listen thread); queued responses are
+  // still sent until stop() is called
+  int stop_receiving();
+  // stops both threads and closes all connections; idempotent
+  int stop();
   int schedule_response(int socket_descriptor, char *buf, int len);
   // cltid identifies the connection (net_data_obj::cltid of the request);
   // the response is dropped if that connection was closed meanwhile, even
