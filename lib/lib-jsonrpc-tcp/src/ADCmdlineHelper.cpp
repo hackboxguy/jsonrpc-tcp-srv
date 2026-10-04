@@ -16,10 +16,16 @@ ADCmdlineHelper::ADCmdlineHelper() {
 ADCmdlineHelper::~ADCmdlineHelper() {}
 int ADCmdlineHelper::init_myself() {
   CmdChain.attach_helper(this);
+  CmdChain.set_element_deleter(&chain_delete_object<CmdExecutionObj>);
   OptionsChain.attach_helper(this);
+  OptionsChain.set_element_deleter(&chain_delete_object<OptionsEntryObj>);
   HelpMsgChainID = HelpMsgChain.attach_helper(this);
+  HelpMsgChain.set_element_deleter(&chain_delete_object<HelpInfoEntryObj>);
   ipChain.attach_helper(this);
+  ipChain.set_element_deleter(&chain_delete_object<IpAddrEntryObj>);
   ClientWorkersList.attach_helper(this);
+  ClientWorkersList.set_element_deleter(
+      &chain_delete_object<ADThreadedSockClient>);
   complete_subargument = NULL;
   subarg_ptr = NULL;
   help_printed = 0;
@@ -143,7 +149,7 @@ int ADCmdlineHelper::free_chain_element_data(void *element,
     HelpInfoEntryObj *pEntry;
     pEntry = (HelpInfoEntryObj *)element;
     if (pEntry->help_msg != NULL)
-      MEM_DELETE(pEntry->help_msg);
+      ARRAY_MEM_DELETE(pEntry->help_msg);
   }
   return 0;
 }
@@ -463,7 +469,7 @@ int ADCmdlineHelper::insert_help_entry(char *HelpMsg) {
   strcpy(pEntry->help_msg, HelpMsg);
   if (HelpMsgChain.chain_put((void *)pEntry) != 0) {
     printf("failed! unable to push options entry to chain!\n");
-    OBJ_MEM_DELETE(pEntry->help_msg);
+    ARRAY_MEM_DELETE(pEntry->help_msg);
     OBJ_MEM_DELETE(pEntry);
     return -1;
   }

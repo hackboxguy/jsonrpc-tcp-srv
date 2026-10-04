@@ -131,6 +131,7 @@ class ADJsonRpcProxy : public ADJsonRpcProducer,
   virtual int thread_callback_function(void *pUserData, ADThreadProducer *pObj);
   char *get_timestamp();
   int json_checker_function(char *string);
+  int send_json_object(int sock_descriptor, json_object *obj);
   void print_json_value(json_object *jobj, json_type type);
   void json_parse(json_object *obj);
   void json_parse_array(json_object *jobj, char *key);

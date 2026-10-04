@@ -36,12 +36,15 @@ int ADJsonRpcProxy::free_chain_element_data(void *element,
   if (pObj->getID() == ReqRespChainID) {
     api_task_obj *objData;
     objData = (api_task_obj *)element;
-    if (objData->pNetData->data_buffer != NULL)
-      MEM_DELETE(objData->pNetData->data_buffer);
-    if (objData->pNetData != NULL)
-      MEM_DELETE(objData->pNetData);
-    if (objData->json_resp_obj != NULL)
-      MEM_DELETE(objData->json_resp_obj);
+    if (objData->pNetData != NULL) {
+      if (objData->pNetData->data_buffer != NULL)
+        ARRAY_MEM_DELETE(objData->pNetData->data_buffer);
+      OBJ_MEM_DELETE(objData->pNetData);
+    }
+    if (objData->json_resp_obj != NULL) {
+      json_object_put((json_object *)objData->json_resp_obj);
+      objData->json_resp_obj = NULL;
+    }
     if (objData->json_resp_string != NULL)
       MEM_DELETE(objData->json_resp_string);
   }
@@ -62,7 +65,9 @@ ADJsonRpcProxy::ADJsonRpcProxy() {
   total_res_sent = 0;
   ServerSocket.attach_on_data_arrival(this);
   ReqRespChainID = ReqRespChain.attach_helper(this);
+  ReqRespChain.set_element_deleter(&chain_delete_object<api_task_obj>);
   RespChainID = RespChain.attach_helper(this);
+  RespChain.set_element_deleter(&chain_delete_object<int>);
   RespThread.subscribe_thread_callback(this);
   RespThread.set_thread_properties(THREAD_TYPE_MONOSHOT, (void *)this);
   RespThread.start_thread();
@@ -97,8 +102,8 @@ int ADJsonRpcProxy::json_checker_function(char *string) {
   str_len = strlen(string);
   JSON_checker jc = new_JSON_checker(20);
   for (i = 0; i < str_len; i++) {
-    int next_char = string[i];
-    if (next_char <= 0) {
+    int next_char = (unsigned char)string[i];
+    if (next_char == 0) {
       break;
     }
     if (!JSON_checker_char(jc, next_char))
@@ -193,51 +198,47 @@ void ADJsonRpcProxy::json_parse_array(json_object *jobj, char *key) {
   }
 }
 int ADJsonRpcProxy::check_jsonrpc_2_0(struct json_object *new_obj) {
-  char tmp_arr[256];
   new_obj = json_object_object_get(new_obj, "jsonrpc");
-  if (json_object_get_string(new_obj) == NULL)
+  const char *version = json_object_get_string(new_obj);
+  if (version == NULL)
     return -1;
-  sprintf(tmp_arr, "%s", json_object_get_string(new_obj));
-  if (strcmp(tmp_arr, "2.0") == 0)
+  if (strcmp(version, "2.0") == 0)
     return 0;
   else
     return -1;
 }
 ADJsonRpcCommand *
 ADJsonRpcProxy::get_jsonrpc_method(struct json_object *new_obj) {
-  char tmp_arr[JSON_RPC_METHOD_NAME_MAX_LENGTH];
   new_obj = json_object_object_get(new_obj, "method");
-  if (json_object_get_string(new_obj) == NULL)
+  const char *method = json_object_get_string(new_obj);
+  if (method == NULL)
     return NULL;
-  sprintf(tmp_arr, "%s", json_object_get_string(new_obj));
-  return (is_this_method_registered(tmp_arr));
+  if (strlen(method) >= JSON_RPC_METHOD_NAME_MAX_LENGTH)
+    return NULL; // can never match a registered method
+  return (is_this_method_registered((char *)method));
 }
 CMD_TASK_ACC ADJsonRpcProxy::get_jsonrpc_acc(struct json_object *new_obj) {
-  char tmp_arr[256];
   new_obj = json_object_object_get(new_obj, "access");
-  if (json_object_get_string(new_obj) == NULL)
+  const char *access = json_object_get_string(new_obj);
+  if (access == NULL)
     return CMD_TASK_ACCESS_SYNC;
-  sprintf(tmp_arr, "%s", json_object_get_string(new_obj));
-  printf("access : %s\n", tmp_arr);
-  if (strcmp(tmp_arr, "sync") == 0)
+  if (strcmp(access, "sync") == 0)
     return CMD_TASK_ACCESS_SYNC;
-  else if (strcmp(tmp_arr, "async") == 0)
+  else if (strcmp(access, "async") == 0)
     return CMD_TASK_ACCESS_ASYNC;
   else
     return CMD_TASK_ACCESS_SYNC;
 }
 int ADJsonRpcProxy::get_jsonrpc_id(struct json_object *new_obj, int *req_id) {
-  char tmp_arr[256];
   new_obj = json_object_object_get(new_obj, "id");
   if (json_object_get_string(new_obj) == NULL)
     return -1;
-  sprintf(tmp_arr, "%s", json_object_get_string(new_obj));
-  *req_id = atoi(tmp_arr);
+  // json_object_get_int() also parses numeric strings, like atoi() did
+  *req_id = json_object_get_int(new_obj);
   return 0;
 }
 int ADJsonRpcProxy::json_send_error_response_string(
     int id, int sock_descriptor, JSON_RPC_ERR_TYPE err_type) {
-  char message[AD_NET_SERVER_MAX_BUFFER_SIZE];
   json_object *intrnl_obj;
   json_object *error_obj;
   intrnl_obj = json_object_new_object();
@@ -278,19 +279,16 @@ int ADJsonRpcProxy::json_send_error_response_string(
     json_object_object_add(intrnl_obj, "id", NULL);
     break;
   }
-  sprintf(message, "%s", json_object_to_json_string(intrnl_obj));
-  ServerSocket.schedule_response(sock_descriptor, message, strlen(message));
-  if (socketlog)
-    printf("%s<--%s\n", get_timestamp(), message);
+  send_json_object(sock_descriptor, intrnl_obj);
+  // error_obj is owned by intrnl_obj (json_object_object_add), so only the
+  // outer object is released here
   json_object_put(intrnl_obj);
-  json_object_put(error_obj);
   return 0;
 }
 int ADJsonRpcProxy::json_send_result_response_string(int id,
                                                      int sock_descriptor,
                                                      char *result,
                                                      api_task_obj *task_obj) {
-  char message[AD_NET_SERVER_MAX_BUFFER_SIZE];
   json_object *intrnl_obj;
   json_object *tmp_obj = NULL;
   intrnl_obj = json_object_new_object();
@@ -300,6 +298,7 @@ int ADJsonRpcProxy::json_send_result_response_string(int id,
     json_object *result_obj;
     result_obj = (json_object *)task_obj->json_resp_obj;
     json_object_object_add(intrnl_obj, "result", result_obj);
+    task_obj->json_resp_obj = NULL; // ownership moved to intrnl_obj
   } else {
     tmp_obj = json_object_new_object();
     json_object_object_add(tmp_obj, "return", json_object_new_string("fail"));
@@ -308,13 +307,20 @@ int ADJsonRpcProxy::json_send_result_response_string(int id,
     json_object_object_add(intrnl_obj, "result", tmp_obj);
   }
   json_object_object_add(intrnl_obj, "id", json_object_new_int(id));
-  sprintf(message, "%s", json_object_to_json_string(intrnl_obj));
-  ServerSocket.schedule_response(sock_descriptor, message, strlen(message));
+  send_json_object(sock_descriptor, intrnl_obj);
+  // tmp_obj and result_obj are owned by intrnl_obj
+  json_object_put(intrnl_obj);
+  return 0;
+}
+int ADJsonRpcProxy::send_json_object(int sock_descriptor, json_object *obj) {
+  size_t len = 0;
+  const char *message =
+      json_object_to_json_string_length(obj, JSON_C_TO_STRING_SPACED, &len);
+  if (message == NULL)
+    return -1;
+  ServerSocket.schedule_response(sock_descriptor, (char *)message, (int)len);
   if (socketlog)
     printf("%s<--%s\n", get_timestamp(), message);
-  if (tmp_obj != NULL)
-    json_object_put(tmp_obj);
-  json_object_put(intrnl_obj);
   return 0;
 }
 int ADJsonRpcProxy::json_single_string_response_sender(api_task_obj *resp_obj) {
@@ -454,12 +460,15 @@ int ADJsonRpcProxy::json_process_rsponse() {
     return -1;
   }
   json_send_new_result(pTaskObj);
-  if (pTaskObj->pNetData->data_buffer != NULL)
-    MEM_DELETE(pTaskObj->pNetData->data_buffer);
-  if (pTaskObj->pNetData != NULL)
-    MEM_DELETE(pTaskObj->pNetData);
+  if (pTaskObj->pNetData != NULL) {
+    if (pTaskObj->pNetData->data_buffer != NULL)
+      ARRAY_MEM_DELETE(pTaskObj->pNetData->data_buffer);
+    OBJ_MEM_DELETE(pTaskObj->pNetData);
+  }
   if (pTaskObj->json_resp_obj != NULL) {
-    ;
+    // only set if no response could be built; release it here
+    json_object_put((json_object *)pTaskObj->json_resp_obj);
+    pTaskObj->json_resp_obj = NULL;
   }
   if (pTaskObj->json_resp_string != NULL)
     MEM_DELETE(pTaskObj->json_resp_string);

@@ -20,38 +20,11 @@ int ADSettings::double_identify_chain_element(void *element, int ident1,
   return -1;
 }
 void ADSettings::delete_value(ESETTINGS_KEY_TYPE key_type, void *value) {
-  switch (key_type) {
-  case ESETTINGS_KEY_TYPE_STRING: {
-    char *myptr = (char *)value;
+  // all local values are allocated as new char[] in attach_setting(),
+  // whatever the key type
+  char *myptr = (char *)value;
+  if (myptr != NULL)
     ARRAY_MEM_DELETE(myptr);
-  } break;
-  case ESETTINGS_KEY_TYPE_INT: {
-    int *myptr = (int *)value;
-    ARRAY_MEM_DELETE(myptr);
-  }
-  case ESETTINGS_KEY_TYPE_INT_ARR: {
-    int *myptr = (int *)value;
-    ARRAY_MEM_DELETE(myptr);
-  }
-  case ESETTINGS_KEY_TYPE_LONG: {
-    long *myptr = (long *)value;
-    ARRAY_MEM_DELETE(myptr);
-  }
-  case ESETTINGS_KEY_TYPE_LONG_ARR: {
-    long *myptr = (long *)value;
-    ARRAY_MEM_DELETE(myptr);
-  }
-  case ESETTINGS_KEY_TYPE_DOUBLE: {
-    double *myptr = (double *)value;
-    ARRAY_MEM_DELETE(myptr);
-  }
-  case ESETTINGS_KEY_TYPE_DOUBLE_ARR: {
-    double *myptr = (double *)value;
-    ARRAY_MEM_DELETE(myptr);
-  }
-  default:
-    break;
-  }
 }
 int ADSettings::free_chain_element_data(void *element, ADChainProducer *pObj) {
   if (pObj->getID() == SettingsChainLocalID) {
@@ -70,6 +43,7 @@ ADSettings::ADSettings() {
   SettingsChain.attach_helper(this);
   SettingsChain.disable_auto_remove();
   SettingsChainLocalID = SettingsChainLocal.attach_helper(this);
+  SettingsChainLocal.set_element_deleter(&chain_delete_object<SETTINGS_ENTRY>);
 }
 ADSettings::~ADSettings() {
   if (settings != NULL)

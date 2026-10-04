@@ -15,9 +15,19 @@ int ADCmnStringProcessor::string_to_enum(const char **string_table,
   }
   return max_enum_value;
 }
+// Deprecated: assumes the caller's buffer holds at least 255 bytes (the size
+// used by the JSON_STRING_TO_* macros). Use the bounded overload instead.
 int ADCmnStringProcessor::find_single_param(char *json_string, char *param_name,
                                             char *value) {
+  return find_single_param(json_string, param_name, value,
+                           ADCMN_SINGLE_PARAM_DEFAULT_SIZE);
+}
+int ADCmnStringProcessor::find_single_param(char *json_string, char *param_name,
+                                            char *value, size_t value_size) {
   struct json_object *new_obj = NULL;
+  if (value == NULL || value_size == 0)
+    return -1;
+  value[0] = '\0';
   new_obj = json_tokener_parse(json_string);
   if (new_obj == NULL) {
     return -1;
@@ -32,7 +42,7 @@ int ADCmnStringProcessor::find_single_param(char *json_string, char *param_name,
     json_object_put(new_obj);
     return -1;
   }
-  sprintf(value, "%s", json_object_get_string(new_obj2));
+  snprintf(value, value_size, "%s", json_object_get_string(new_obj2));
   json_object_put(new_obj);
   return 0;
 }

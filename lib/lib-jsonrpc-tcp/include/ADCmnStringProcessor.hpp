@@ -2,12 +2,18 @@
 #define __AD_CMN_STRING_PROCESSOR_H_
 #include "ADCommon.hpp"
 #include "JsonCmnDef.h"
+#include <stddef.h>
+#define ADCMN_SINGLE_PARAM_DEFAULT_SIZE 255
 class ADCmnStringProcessor {
 public:
   ADCmnStringProcessor();
   ~ADCmnStringProcessor();
   int string_to_enum(const char **string_table, char *string,
                      int max_enum_value);
+  // value is truncated (always NUL terminated) to value_size bytes
+  int find_single_param(char *json_string, char *param_name, char *value,
+                        size_t value_size);
+  // deprecated: assumes value can hold ADCMN_SINGLE_PARAM_DEFAULT_SIZE bytes
   int find_single_param(char *json_string, char *param_name, char *value);
   int convert_server_result_to_string(RPC_SRV_RESULT result,
                                       char *result_string);

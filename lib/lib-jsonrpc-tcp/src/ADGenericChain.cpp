@@ -4,6 +4,7 @@ using namespace std;
 int ADChainProducer::IDGenerator = 0;
 ADGenericChain::ADGenericChain() {
   disable_autoremove = 0;
+  element_deleter = &chain_free_element;
   chain_peak_size = 0;
   chain_size = 0;
   ident_generator = 0;
@@ -258,7 +259,8 @@ int ADGenericChain::remove_all(void) {
   while (base_chain.pNext != NULL) {
     if (disable_autoremove == 0) {
       free_chain_element_data(base_chain.pNext->pData);
-      free(base_chain.pNext->pData);
+      if (element_deleter != NULL)
+        element_deleter(base_chain.pNext->pData);
       base_chain.pNext->pData = NULL;
     }
     remove();
@@ -271,5 +273,11 @@ int ADGenericChain::disable_auto_remove() {
 }
 int ADGenericChain::enable_auto_remove() {
   disable_autoremove = 0;
+  return 0;
+}
+int ADGenericChain::set_element_deleter(chain_element_deleter deleter) {
+  SEMA_LOCK();
+  element_deleter = deleter;
+  SEMA_UNLOCK();
   return 0;
 }

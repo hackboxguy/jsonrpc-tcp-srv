@@ -10,10 +10,17 @@ using namespace std;
 int ADTimer::received_user_stop_sig = 0;
 int ADTimer::stoptimer = 0;
 ADTimer *pTmpTimer;
-ADTimer::ADTimer() : millisec_time(100), passive_mode(true) {}
+ADTimer::ADTimer() : millisec_time(100), passive_mode(true) {
+  custom_sig_chain.set_element_deleter(
+      &chain_delete_object<ADTIMER_CUSTOM_SIG>);
+  SigInfoChain.set_element_deleter(&chain_delete_object<ADTIMER_CUSTOM_SIG>);
+}
 ADTimer::ADTimer(int timer_millisec, int port) {
   notifyPortNum = port;
   passive_mode = false;
+  custom_sig_chain.set_element_deleter(
+      &chain_delete_object<ADTIMER_CUSTOM_SIG>);
+  SigInfoChain.set_element_deleter(&chain_delete_object<ADTIMER_CUSTOM_SIG>);
   stoptimer = 0;
   pTmpTimer = this;
   received_user_stop_sig = 0;

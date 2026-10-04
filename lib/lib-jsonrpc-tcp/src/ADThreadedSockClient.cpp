@@ -116,7 +116,9 @@ ADThreadedSockClient::ADThreadedSockClient() {
 ADThreadedSockClient::~ADThreadedSockClient() { stop_command_execution(); }
 int ADThreadedSockClient::initialize_helpers(void) {
   cmd_chain.attach_helper(this);
+  cmd_chain.set_element_deleter(&chain_delete_object<CmdExecutionObj>);
   output_msg_chain_id = output_msg_chain.attach_helper(this);
+  output_msg_chain.set_element_deleter(&chain_delete_object<OutputPrintMsgObj>);
   cmd_thread.subscribe_thread_callback(this);
   cmd_thread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
   return 0;

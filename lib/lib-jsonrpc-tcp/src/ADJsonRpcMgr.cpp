@@ -704,13 +704,14 @@ int ADJsonRpcMgr::json_to_bin_event_subscribe(JsonDataCommObj *pReq) {
                        EJSON_RPCGMGR_EVENT_SUBSCRIBE);
   JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_CLTTOK, pPanelCmdObj->cltToken);
   if (find_single_param((char *)pReq->socket_data,
-                        (char *)RPCMGR_RPC_EVENT_ARG_PORT, temp_param) == 0) {
+                        (char *)RPCMGR_RPC_EVENT_ARG_PORT, temp_param,
+                        sizeof(temp_param)) == 0) {
     JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_PORT, pPanelCmdObj->portNum);
   } else
     pPanelCmdObj->portNum = -1;
   if (find_single_param((char *)pReq->socket_data,
-                        (char *)RPCMGR_RPC_EVENT_ARG_EVENTNUM,
-                        temp_param) == 0) {
+                        (char *)RPCMGR_RPC_EVENT_ARG_EVENTNUM, temp_param,
+                        sizeof(temp_param)) == 0) {
     JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_EVENTNUM, pPanelCmdObj->eventNum);
   } else
     pPanelCmdObj->eventNum = -1;
@@ -782,12 +783,14 @@ int ADJsonRpcMgr::json_to_bin_event_notify(JsonDataCommObj *pReq) {
                        EJSON_RPCGMGR_EVENT_NOTIFY);
   JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_EVENTNUM, pPanelCmdObj->eventNum);
   if (find_single_param((char *)pReq->socket_data,
-                        (char *)RPCMGR_RPC_EVENT_ARG_EXTRA, temp_param) == 0) {
+                        (char *)RPCMGR_RPC_EVENT_ARG_EXTRA, temp_param,
+                        sizeof(temp_param)) == 0) {
     JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_EXTRA, pPanelCmdObj->eventArg);
   } else
     pPanelCmdObj->eventArg = -1;
   if (find_single_param((char *)pReq->socket_data,
-                        (char *)RPCMGR_RPC_EVENT_ARG2_EXTRA, temp_param) == 0) {
+                        (char *)RPCMGR_RPC_EVENT_ARG2_EXTRA, temp_param,
+                        sizeof(temp_param)) == 0) {
     JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG2_EXTRA, pPanelCmdObj->eventArg2);
   } else
     pPanelCmdObj->eventArg2 = -1;
@@ -816,12 +819,14 @@ int ADJsonRpcMgr::json_to_bin_event_process(JsonDataCommObj *pReq) {
   JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_CLTTOK, pPanelCmdObj->cltToken);
   JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_EVENTNUM, pPanelCmdObj->eventNum);
   if (find_single_param((char *)pReq->socket_data,
-                        (char *)RPCMGR_RPC_EVENT_ARG_EXTRA, temp_param) == 0) {
+                        (char *)RPCMGR_RPC_EVENT_ARG_EXTRA, temp_param,
+                        sizeof(temp_param)) == 0) {
     JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG_EXTRA, pPanelCmdObj->eventArg);
   } else
     pPanelCmdObj->eventArg = -1;
   if (find_single_param((char *)pReq->socket_data,
-                        (char *)RPCMGR_RPC_EVENT_ARG2_EXTRA, temp_param) == 0) {
+                        (char *)RPCMGR_RPC_EVENT_ARG2_EXTRA, temp_param,
+                        sizeof(temp_param)) == 0) {
     JSON_STRING_TO_INT(RPCMGR_RPC_EVENT_ARG2_EXTRA, pPanelCmdObj->eventArg2);
   } else
     pPanelCmdObj->eventArg2 = -1;

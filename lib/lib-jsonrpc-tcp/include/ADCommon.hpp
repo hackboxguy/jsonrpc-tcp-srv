@@ -448,7 +448,7 @@ typedef struct rpc_srv_request_t {
   do {                                                                         \
     char param_value[255];                                                     \
     if (find_single_param((char *)pReq->socket_data, (char *)ENUM_NAME,        \
-                          param_value) != 0) {                                 \
+                          param_value, sizeof(param_value)) != 0) {            \
       pReq->mapper_result = CMD_TASK_RESULT_INVALID_PARAM;                     \
       OBJ_MEM_DELETE(pPanelCmdObj);                                            \
       return -1;                                                               \
@@ -465,7 +465,7 @@ typedef struct rpc_srv_request_t {
   do {                                                                         \
     char param_value[255];                                                     \
     if (find_single_param((char *)pReq->socket_data, (char *)STRING_NAME,      \
-                          param_value) != 0) {                                 \
+                          param_value, sizeof(param_value)) != 0) {            \
       pReq->mapper_result = CMD_TASK_RESULT_INVALID_PARAM;                     \
       OBJ_MEM_DELETE(pPanelCmdObj);                                            \
       return -1;                                                               \
@@ -476,7 +476,7 @@ typedef struct rpc_srv_request_t {
   do {                                                                         \
     char param_value[255];                                                     \
     if (find_single_param((char *)pReq->socket_data, (char *)INT_NAME,         \
-                          param_value) != 0) {                                 \
+                          param_value, sizeof(param_value)) != 0) {            \
       pReq->mapper_result = CMD_TASK_RESULT_INVALID_PARAM;                     \
       OBJ_MEM_DELETE(pPanelCmdObj);                                            \
       return -1;                                                               \
@@ -487,7 +487,7 @@ typedef struct rpc_srv_request_t {
   do {                                                                         \
     char param_value[255];                                                     \
     if (find_single_param((char *)pReq->socket_data, (char *)DOUBLE_NAME,      \
-                          param_value) != 0) {                                 \
+                          param_value, sizeof(param_value)) != 0) {            \
       pReq->mapper_result = CMD_TASK_RESULT_INVALID_PARAM;                     \
       OBJ_MEM_DELETE(pPanelCmdObj);                                            \
       return -1;                                                               \
@@ -498,7 +498,7 @@ typedef struct rpc_srv_request_t {
   do {                                                                         \
     char param_value[255];                                                     \
     if (find_single_param((char *)pReq->socket_data, (char *)ULONG_NAME,       \
-                          param_value) != 0) {                                 \
+                          param_value, sizeof(param_value)) != 0) {            \
       pReq->mapper_result = CMD_TASK_RESULT_INVALID_PARAM;                     \
       OBJ_MEM_DELETE(pPanelCmdObj);                                            \
       return -1;                                                               \

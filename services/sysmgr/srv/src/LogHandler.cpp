@@ -7,6 +7,7 @@
 /* ------------------------------------------------------------------------- */
 LogHandler::LogHandler(std::string filePath) : LogFilePath(filePath) {
   logmsg_chain.attach_helper(this);
+  logmsg_chain.set_element_deleter(&chain_delete_object<LOG_MSG_PACKET>);
 }
 /* ------------------------------------------------------------------------- */
 LogHandler::~LogHandler() { logmsg_chain.remove_all(); }

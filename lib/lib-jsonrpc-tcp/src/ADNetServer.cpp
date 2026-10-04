@@ -27,7 +27,8 @@ int ADNetServer::double_identify_chain_element(void *element, int ident1,
 int ADNetServer::free_chain_element_data(void *element, ADChainProducer *pObj) {
   net_data_obj *obj;
   obj = (net_data_obj *)element;
-  OBJ_MEM_DELETE(obj->data_buffer);
+  if (obj->data_buffer != NULL)
+    ARRAY_MEM_DELETE(obj->data_buffer);
   return 0;
 }
 bool ADNetServer::IsConnectionAlive(int sock_descriptor) {
@@ -50,7 +51,7 @@ int ADNetServer::monoshot_callback_function(void *pUserData,
       if (IsConnectionAlive(resp_obj->sock_descriptor))
         send(resp_obj->sock_descriptor, resp_obj->data_buffer,
              resp_obj->data_buffer_len, MSG_DONTWAIT | MSG_NOSIGNAL);
-      OBJ_MEM_DELETE(resp_obj->data_buffer);
+      ARRAY_MEM_DELETE(resp_obj->data_buffer);
       OBJ_MEM_DELETE(resp_obj);
     }
   }
@@ -74,8 +75,14 @@ int ADNetServer::thread_callback_function(void *pUserData,
     if (end_server == AD_NETWORK_TRUE)
       break;
     if (rc < 0) {
-      printf("  select() failed");
-      break;
+      if (errno == EINTR)
+        continue; // a signal is not a reason to stop serving
+      LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer", "select() failed errno=%d",
+                           errno);
+      if (errno == EBADF || errno == EINVAL)
+        break;
+      usleep(100000);
+      continue;
     }
     if (rc == 0) {
       continue;
@@ -85,26 +92,46 @@ int ADNetServer::thread_callback_function(void *pUserData,
       if (FD_ISSET(i, &working_set)) {
         desc_ready -= 1;
         if (i == listen_sd) {
-          do {
+          for (;;) {
+            in_len = sizeof(in_addr);
             new_sd = accept(listen_sd, &in_addr, &in_len);
             if (new_sd < 0) {
-              if (errno != EWOULDBLOCK) {
-                printf("  accept() failed");
-                end_server = AD_NETWORK_TRUE;
+              if (errno == EINTR || errno == ECONNABORTED)
+                continue; // retry
+              if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                // EMFILE/ENFILE/ENOBUFS/ENOMEM: transient, keep serving
+                LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
+                                     "accept() failed errno=%d", errno);
+                if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK) {
+                  end_server = AD_NETWORK_TRUE;
+                } else
+                  usleep(100000); // back off; connection stays queued
               }
               break;
+            }
+            if (new_sd >= FD_SETSIZE) {
+              // FD_SET() beyond FD_SETSIZE corrupts memory: refuse the client
+              LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
+                                   "rejecting client fd=%d >= FD_SETSIZE",
+                                   new_sd);
+              close(new_sd);
+              continue;
             }
             print_client_info(&in_addr, in_len, new_sd);
             FD_SET(new_sd, &master_set);
             if (new_sd > max_sd)
               max_sd = new_sd;
-          } while (new_sd != -1);
+          }
         } else {
           close_conn = AD_NETWORK_FALSE;
           do {
-            rc = recv(i, receive_buffer, sizeof(receive_buffer), MSG_DONTWAIT);
+            // leave room for the terminating NUL
+            rc = recv(i, receive_buffer, sizeof(receive_buffer) - 1,
+                      MSG_DONTWAIT);
             if (rc < 0) {
-              if (errno != EWOULDBLOCK) {
+              if (errno == EINTR)
+                continue;
+              if (errno != EWOULDBLOCK && errno != EAGAIN) {
                 close_conn = AD_NETWORK_TRUE;
               }
               break;
@@ -112,7 +139,6 @@ int ADNetServer::thread_callback_function(void *pUserData,
             if (rc == 0) {
               if (socketlog)
                 printf("[%06d]Connection closed\n", i);
-              deregister_client_info(i);
               close_conn = AD_NETWORK_TRUE;
               break;
             }
@@ -130,10 +156,12 @@ int ADNetServer::thread_callback_function(void *pUserData,
             }
           } while (AD_NETWORK_TRUE);
           if (close_conn) {
+            deregister_client_info(i);
             close(i);
             FD_CLR(i, &master_set);
             if (i == max_sd) {
-              while (FD_ISSET(max_sd, &master_set) == AD_NETWORK_FALSE)
+              while (max_sd > listen_sd &&
+                     FD_ISSET(max_sd, &master_set) == AD_NETWORK_FALSE)
                 max_sd -= 1;
             }
           }
@@ -239,8 +267,11 @@ int ADNetServer::stop_listening() {
 }
 int ADNetServer::initialize_helpers(void) {
   request_chain.attach_helper(this);
+  request_chain.set_element_deleter(&chain_delete_object<net_data_obj>);
   response_chain.attach_helper(this);
+  response_chain.set_element_deleter(&chain_delete_object<net_data_obj>);
   clientInfo_chain.attach_helper(this);
+  clientInfo_chain.set_element_deleter(&chain_delete_object<net_data_obj>);
   id_listen_thread = listen_thread.subscribe_thread_callback(this);
   id_response_thread = response_thread.subscribe_thread_callback(this);
   listen_thread.set_thread_properties(THREAD_TYPE_NOBLOCK, (void *)this);
@@ -276,11 +307,7 @@ int ADNetServer::register_client_info(int sock_descr, int clt_port,
   resp_obj->sock_descriptor = sock_descr;
   resp_obj->port = clt_port;
   resp_obj->data_buffer = NULL;
-  int ip_len = strlen(clt_ip);
-  if (ip_len > 0 && ip_len < 1023)
-    strcpy(resp_obj->ip, clt_ip);
-  else
-    strcpy(resp_obj->ip, "");
+  snprintf(resp_obj->ip, sizeof(resp_obj->ip), "%s", clt_ip);
   if (clientInfo_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push client-info object to chain!\n");
     OBJ_MEM_DELETE(resp_obj);
@@ -290,22 +317,25 @@ int ADNetServer::register_client_info(int sock_descr, int clt_port,
 }
 int ADNetServer::deregister_client_info(int sock_descr) {
   net_data_obj *info_obj = NULL;
-  info_obj = (net_data_obj *)clientInfo_chain.chain_remove_by_ident(sock_descr);
-  if (info_obj != NULL)
+  while ((info_obj = (net_data_obj *)clientInfo_chain.chain_remove_by_ident(
+              sock_descr)) != NULL)
     OBJ_MEM_DELETE(info_obj);
   return 0;
 }
 int ADNetServer::get_client_info(int sock_descr, char *cltip, int *cltport,
                                  int *cltid) {
   net_data_obj *info_obj = NULL;
+  int ret = -1;
+  clientInfo_chain.chain_lock();
   info_obj = (net_data_obj *)clientInfo_chain.chain_get_by_ident(sock_descr);
   if (info_obj != NULL) {
     strcpy(cltip, info_obj->ip);
     *cltport = info_obj->port;
     *cltid = info_obj->ident;
-    return 0;
-  } else
-    return -1;
+    ret = 0;
+  }
+  clientInfo_chain.chain_unlock();
+  return ret;
 }
 int ADNetServer::schedule_response(int socket_descriptor, char *buf, int len) {
   net_data_obj *resp_obj = NULL;
@@ -321,10 +351,11 @@ int ADNetServer::schedule_response(int socket_descriptor, char *buf, int len) {
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }
-  strcpy(resp_obj->data_buffer, buf);
+  memcpy(resp_obj->data_buffer, buf, len);
+  resp_obj->data_buffer[len] = '\0';
   if (response_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push response object to chain!\n");
-    OBJ_MEM_DELETE(resp_obj->data_buffer);
+    ARRAY_MEM_DELETE(resp_obj->data_buffer);
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }
@@ -338,7 +369,6 @@ int ADNetServer::binary_receive_data_and_notify_consumer(int socket_descriptor,
   int cltid = -1;
   if (get_client_info(socket_descriptor, cltip, &cltport, &cltid) != 0)
     cltip[0] = '\0';
-  printf("receive_data_and_notify_consumer called\n");
   net_data_obj *resp_obj = NULL;
   OBJECT_MEM_NEW(resp_obj, net_data_obj);
   if (resp_obj == NULL)
@@ -354,15 +384,15 @@ int ADNetServer::binary_receive_data_and_notify_consumer(int socket_descriptor,
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }
-  strcpy(resp_obj->data_buffer, buf);
+  memcpy(resp_obj->data_buffer, buf, len);
+  resp_obj->data_buffer[len] = '\0';
   if (request_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push response object to chain!\n");
-    OBJ_MEM_DELETE(resp_obj->data_buffer);
+    ARRAY_MEM_DELETE(resp_obj->data_buffer);
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }
   notify_data_arrival(&request_chain);
-  printf("receive_data_and_notify_consumer finished\n");
   return 0;
 }
 int ADNetServer::json_receive_data_and_notify_consumer(int socket_descriptor,
@@ -397,7 +427,7 @@ int ADNetServer::json_receive_data_and_notify_consumer(int socket_descriptor,
       pTemp = &buf[i + 1];
       if (request_chain.chain_put((void *)resp_obj) != 0) {
         printf("failed! unable to push response object to chain!\n");
-        OBJ_MEM_DELETE(resp_obj->data_buffer);
+        ARRAY_MEM_DELETE(resp_obj->data_buffer);
         OBJ_MEM_DELETE(resp_obj);
         return -1;
       }
@@ -423,7 +453,7 @@ int ADNetServer::json_receive_data_and_notify_consumer(int socket_descriptor,
   strncpy(resp_obj->data_buffer, pTemp, (len - last_index) + 1);
   if (request_chain.chain_put((void *)resp_obj) != 0) {
     printf("failed! unable to push response object to chain!\n");
-    OBJ_MEM_DELETE(resp_obj->data_buffer);
+    ARRAY_MEM_DELETE(resp_obj->data_buffer);
     OBJ_MEM_DELETE(resp_obj);
     return -1;
   }

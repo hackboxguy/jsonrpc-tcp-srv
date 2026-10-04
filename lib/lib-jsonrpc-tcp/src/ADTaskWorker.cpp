@@ -69,7 +69,10 @@ int ADTaskWorker::monoshot_callback_function(void *pUserData,
 ADTaskWorker::ADTaskWorker() {
   notifyPortNum = -1;
   work_inprog_chain_id = work_inprog_chain.attach_helper(this);
+  work_inprog_chain.set_element_deleter(
+      &chain_delete_object<WORK_CMD_TASK_IN_PROG>);
   work_chain_id = work_chain.attach_helper(this);
+  work_chain.set_element_deleter(&chain_delete_object<WORK_CMD_TASK>);
   work_thread.subscribe_thread_callback(this);
   work_thread.set_thread_properties(THREAD_TYPE_MONOSHOT, (void *)this);
   work_thread.start_thread();
