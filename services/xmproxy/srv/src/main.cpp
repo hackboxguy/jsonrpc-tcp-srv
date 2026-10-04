@@ -129,8 +129,10 @@ int main(int argc, const char *argv[]) {
   RpcMgr.AttachHeartBeat(&AppTimer); // attach 100ms heartbeat to ADJsonRpcMgr
   // RpcMgr.SupportShutdownRpc(false);//uncomment if this service is required to
   // ignore shutdown-rpc
+  // --bindaddr limits the RPC port to one interface (default: all)
   if (RpcMgr.Start(CmdLine.get_port_number(), CmdLine.get_socket_log(),
-                   CmdLine.get_emulation_mode()) != 0) {
+                   CmdLine.get_emulation_mode(),
+                   CmdLine.get_bind_address()) != 0) {
     // port busy or not available: let the supervisor restart us
     return 1;
   }

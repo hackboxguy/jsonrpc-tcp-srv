@@ -37,6 +37,7 @@ int ADCmdlineHelper::init_myself() {
   test_num = 0;
   strcpy(ip, "127.0.0.1");
   port = -1;
+  bind_addr[0] = '\0';
   emulation_mode = CMDLINE_OPT_TYPE_NO;
   socket_log = CMDLINE_OPT_TYPE_NO;
   debug_log = CMDLINE_OPT_TYPE_NO;
@@ -114,6 +115,9 @@ int ADCmdlineHelper::init_myself() {
     insert_help_entry((char *)"--rwdword=addr,data        (read/write "
                               "middleware dword from/to given address)");
   } else if (my_mode == CMDLINE_HELPER_MODE_SERVER) {
+    insert_options_entry((char *)"bindaddr", optional_argument, 'B', 1);
+    insert_help_entry((char *)"--bindaddr=ip              (listen only on this "
+                              "IPv4 address, e.g. 127.0.0.1; default: all)");
     insert_options_entry((char *)"debuglog", no_argument, 'u', 1);
     insert_help_entry(
         (char *)"--debuglog                 (enable debug logging)");
@@ -214,7 +218,7 @@ int ADCmdlineHelper::get_next_subargument(char **subarg) {
 }
 int ADCmdlineHelper::parse_cmdline_arguments(int argc, char **argv) {
   int arg;
-  char *subarg;
+  char *subarg = NULL;
   if (fill_long_options_table() != 0)
     return -1;
   do {
@@ -238,6 +242,10 @@ int ADCmdlineHelper::parse_cmdline_arguments(int argc, char **argv) {
       break;
     case 'p':
       parse_port_number_opt(subarg);
+      break;
+    case 'B':
+      if (get_next_subargument(&subarg) != 0)
+        snprintf(bind_addr, sizeof(bind_addr), "%s", subarg);
       break;
     case 'u':
       debug_log = CMDLINE_OPT_TYPE_YES;
@@ -401,6 +409,9 @@ int ADCmdlineHelper::parse_cmdline_arguments(int argc, char **argv) {
   return 0;
 }
 int ADCmdlineHelper::get_port_number() { return port; }
+const char *ADCmdlineHelper::get_bind_address() {
+  return bind_addr[0] != '\0' ? bind_addr : NULL;
+}
 int ADCmdlineHelper::get_ip_addr(char *addr) {
   strcpy(addr, ip);
   return 0;
@@ -596,6 +607,7 @@ int ADCmdlineHelper::push_int_get_set_with_dev_addr_arg_command(
     if (get_next_subargument(&subarg) == 0) {
       if (forced_act == RPC_SRV_ACT_WRITEONLY) {
         printf("this is a write only command!!!\n");
+        OBJ_MEM_DELETE(pCmdObj);
         return -1;
       }
       strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -606,6 +618,7 @@ int ADCmdlineHelper::push_int_get_set_with_dev_addr_arg_command(
     } else {
       if (forced_act == RPC_SRV_ACT_READONLY) {
         printf("this is a read only command!!!\n");
+        OBJ_MEM_DELETE(pCmdObj);
         return -1;
       }
       strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -618,6 +631,7 @@ int ADCmdlineHelper::push_int_get_set_with_dev_addr_arg_command(
   } else {
     if (get_next_subargument(&subarg) == 0) {
       printf("please specify address!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -657,6 +671,7 @@ int ADCmdlineHelper::push_enum_get_set_with_dev_addr_arg_command(
   if (get_next_subargument(&subarg) == 0) {
     if (forced_act == RPC_SRV_ACT_WRITEONLY) {
       printf("this is a write only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -667,6 +682,7 @@ int ADCmdlineHelper::push_enum_get_set_with_dev_addr_arg_command(
   } else {
     if (forced_act == RPC_SRV_ACT_READONLY) {
       printf("this is a read only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -709,6 +725,7 @@ int ADCmdlineHelper::push_string_get_set_with_dev_addr_arg_command(
   if (get_next_subargument(&subarg) == 0) {
     if (forced_act == RPC_SRV_ACT_WRITEONLY) {
       printf("this is a write only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -719,6 +736,7 @@ int ADCmdlineHelper::push_string_get_set_with_dev_addr_arg_command(
   } else {
     if (forced_act == RPC_SRV_ACT_READONLY) {
       printf("this is a read only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, addr_param_name);
@@ -999,6 +1017,7 @@ int ADCmdlineHelper::push_string_get_set_with_string_arg_command(
   if (get_next_subargument(&subarg) == 0) {
     if (forced_act == RPC_SRV_ACT_WRITEONLY) {
       printf("this is a write only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     pCmdObj->command = getcmd;
@@ -1006,6 +1025,7 @@ int ADCmdlineHelper::push_string_get_set_with_string_arg_command(
   } else {
     if (forced_act == RPC_SRV_ACT_READONLY) {
       printf("this is a read only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     pCmdObj->command = setcmd;
@@ -1100,6 +1120,7 @@ int ADCmdlineHelper::push_string_get_set_with_enum_arg(
   if (get_next_subargument(&subarg) == 0) {
     OBJ_MEM_DELETE(pCmdObj);
     printf("please specify correct enum value!!!\n");
+    OBJ_MEM_DELETE(pCmdObj);
     return -1;
   } else {
     int temp_val = string_to_enum(enum_table, subarg, enum_max);
@@ -1147,6 +1168,7 @@ int ADCmdlineHelper::push_string_get_set_command(
   if (get_next_subargument(&subarg) == 0) {
     if (forced_act == RPC_SRV_ACT_WRITEONLY) {
       printf("this is a write only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, string_param_name);
@@ -1155,6 +1177,7 @@ int ADCmdlineHelper::push_string_get_set_command(
   } else {
     if (forced_act == RPC_SRV_ACT_READONLY) {
       printf("this is a read only command!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     }
     strcpy(pCmdObj->first_arg_param_name, string_param_name);
@@ -1186,6 +1209,7 @@ int ADCmdlineHelper::push_double_int_set_command(int setcmd,
   if (get_next_subargument(&subarg) == 0) {
     OBJ_MEM_DELETE(pCmdObj);
     printf("please specify first int argument!!!\n");
+    OBJ_MEM_DELETE(pCmdObj);
     return -1;
   } else {
     pCmdObj->command = setcmd;
@@ -1196,6 +1220,7 @@ int ADCmdlineHelper::push_double_int_set_command(int setcmd,
     if (get_next_subargument(&subarg) == 0) {
       OBJ_MEM_DELETE(pCmdObj);
       printf("please specify second int argument!!!\n");
+      OBJ_MEM_DELETE(pCmdObj);
       return -1;
     } else {
       pCmdObj->second_arg_param_int_value = atoi(subarg);

@@ -245,6 +245,9 @@ int ADGenericChain::remove(void) {
   struct chain_holder *pHolder = base_chain.pNext;
   if (pHolder == NULL)
     return -1;
+  // the analyzer assumes the element deleter called by remove_all() may free
+  // the holder; it only releases the element (pData)
+  // NOLINTNEXTLINE(clang-analyzer-unix.Malloc)
   if (pHolder->pNext != NULL) {
     pHolder->pPrev->pNext = pHolder->pNext;
     pHolder->pNext->pPrev = pHolder->pPrev;
@@ -256,6 +259,8 @@ int ADGenericChain::remove(void) {
   return 0;
 }
 int ADGenericChain::remove_all(void) {
+  // see remove(): the callbacks release the element, never the holder
+  // NOLINTBEGIN(clang-analyzer-unix.Malloc)
   while (base_chain.pNext != NULL) {
     if (disable_autoremove == 0) {
       free_chain_element_data(base_chain.pNext->pData);
@@ -265,6 +270,7 @@ int ADGenericChain::remove_all(void) {
     }
     remove();
   }
+  // NOLINTEND(clang-analyzer-unix.Malloc)
   return 0;
 }
 int ADGenericChain::disable_auto_remove() {

@@ -120,6 +120,7 @@ class ADCmdlineHelper : public ADCmdlineHelperProducer,
   int test_num;
   char ip[255];
   int port;
+  char bind_addr[64];
   CMDLINE_OPT_TYPE emulation_mode;
   CMDLINE_OPT_TYPE socket_log;
   CMDLINE_OPT_TYPE debug_log;
@@ -166,6 +167,8 @@ public:
   int insert_help_entry(char *HelpMsg);
   int print_help();
   int get_port_number();
+  // --bindaddr value, or NULL for all interfaces
+  const char *get_bind_address();
   CMDLINE_OPT_TYPE get_emulation_mode();
   int get_ip_addr(char *addr);
   int get_loop_count();

@@ -11,8 +11,29 @@ using namespace testnet;
 static TestServer *srv = NULL;
 static int control_fd = -1;
 
+// The "common RPC handler" runs the built-in async tasks
+// (trigger_settings_save, trigger_factory_store/restore, trigger_run,
+// set_devop_state). Without it they finish instantly; with 20 ms of work
+// the fuzzer also exercises the task worker, reset_task_status while tasks
+// run, and the in-process task events.
+class SlowCommonHandler : public ADJsonRpcMgrConsumer {
+public:
+  SlowCommonHandler()
+      : ADJsonRpcMgrConsumer("fuzz_common", 0, false, false, true) {}
+  virtual int MapJsonToBinary(JsonDataCommObj *, int) { return -1; }
+  virtual int MapBinaryToJson(JsonDataCommObj *, int) { return -1; }
+  virtual int ProcessWork(JsonDataCommObj *, int, ADJsonRpcMgrProducer *) {
+    return -1;
+  }
+  virtual RPC_SRV_RESULT ProcessWorkAsync(int, unsigned char *) {
+    usleep(20000);
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+  virtual void ReceiveEvent(int, int, int, int) {}
+};
+
 extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
-  srv = new TestServer(test_port());
+  srv = new TestServer(test_port(), 0, new SlowCommonHandler);
   return 0;
 }
 

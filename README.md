@@ -33,5 +33,6 @@ The services speak JSON-RPC 2.0 over plain TCP, with these limits:
   their own restart (a duplicate subscription is harmless).
 - **Network exposure.** The services listen on all interfaces by default and
   have no authentication; some methods run shell commands or shut the
-  service down. Restrict access with a firewall, or bind to `127.0.0.1`
-  (`ADJsonRpcMgr::Start(port, log, emulation, "127.0.0.1")`).
+  service down. Restrict access with a firewall, or start the services with
+  `--bindaddr=127.0.0.1` (library: `ADJsonRpcMgr::Start(port, log,
+  emulation, "127.0.0.1")`).

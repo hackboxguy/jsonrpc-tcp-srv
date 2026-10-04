@@ -27,3 +27,7 @@
 "\"c\""
 "\"d\""
 "\"e\""
+"\"trigger_factory_store\""
+"\"trigger_factory_restore\""
+"\"run_now\""
+"\"set_devop_state\""

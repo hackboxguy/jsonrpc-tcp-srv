@@ -436,7 +436,10 @@ cmake --build Out-asan -j$(nproc) && ctest --test-dir Out-asan --output-on-failu
   (`musl` runs the lib tests in an Alpine container; `CI_SERVICES=OFF` skips
   the services, xmproxysrv needs gloox). GitHub Actions: `.github/workflows/ci.yml`.
 - Static analysis: `cmake --build <dir> --target lint` (clang-tidy with
-  `.clang-tidy`, cppcheck; reports in the build dir, non-fatal backlog).
+  `.clang-tidy`, cppcheck; reports in the build dir). clang-analyzer
+  core/cplusplus/unix findings outside the hardware drivers fail the target;
+  the rest is a non-fatal backlog.
+- Services accept `--bindaddr=<ipv4>` to listen on one interface only.
 - Fuzzing (clang): `-DADLIB_FUZZ=ON` builds `fuzz_framer`, `fuzz_client_parse`,
   `fuzz_request` (full server request path); ctest runs each for 20 s, e.g.
   `./fuzz_request -dict=<src>/lib/lib-jsonrpc-tcp/tests/fuzz.dict corpus/`.

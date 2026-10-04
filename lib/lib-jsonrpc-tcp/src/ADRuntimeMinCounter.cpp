@@ -72,13 +72,16 @@ unsigned long ADRuntimeMinCounter::GetCounterValue(void) {
 }
 int ADRuntimeMinCounter::get_uptime_in_seconds(unsigned long *uptime) {
   FILE *cmdline = fopen("/proc/uptime", "rb");
+  if (cmdline == NULL)
+    return -1; // getdelim() on a NULL stream crashes
   char *arg = 0;
   size_t size = 0;
   double tmp_time = 0.0;
   while (getdelim(&arg, &size, 0, cmdline) != -1) {
     ;
   }
-  sscanf(arg, "%lf", &tmp_time);
+  if (arg == NULL || sscanf(arg, "%lf", &tmp_time) != 1)
+    tmp_time = 0.0;
   *uptime = (unsigned long)tmp_time;
   free(arg);
   fclose(cmdline);

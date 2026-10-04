@@ -32,6 +32,7 @@ public:
   int get_socket_log();
   bool get_debug_log();
   int get_port_number();
+  const char *get_bind_address() { return CmdlineHelper.get_bind_address(); }
   int get_dev_info(ADCMN_DEV_INFO *pInfo);
 
   // service specific part

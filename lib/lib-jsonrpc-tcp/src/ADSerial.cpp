@@ -308,7 +308,9 @@ int ADSerial::read_serial_data(int serial_fd, unsigned char *buf, int size) {
   if (size > MAX_RX_TX_CHUNK_SZ)
     size = MAX_RX_TX_CHUNK_SZ;
 #endif
-  n = read(serial_fd, buf, size);
+  // the rx thread reads under multi_callback_lock on purpose: it serializes
+  // the rx/tx callbacks of one port
+  n = read(serial_fd, buf, size); // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
   return n;
 }
 int ADSerial::write_serial_data(int serial_fd, unsigned char *data,
