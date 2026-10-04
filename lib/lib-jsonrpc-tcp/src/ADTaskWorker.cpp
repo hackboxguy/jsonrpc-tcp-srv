@@ -1,6 +1,12 @@
 #include "ADTaskWorker.hpp"
 #include "ADJsonRpcClient.hpp"
 #include <stdio.h>
+#include <time.h>
+static long monotonic_ms() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
 int ADTaskWorkerProducer::IDGenerator = 0;
 int ADTaskWorker::identify_chain_element(void *element, int ident,
                                          ADChainProducer *pObj) {
@@ -43,8 +49,10 @@ int ADTaskWorker::monoshot_callback_function(void *pUserData,
   WORK_CMD_TASK *work_obj = NULL;
   work_obj = (WORK_CMD_TASK *)work_chain.chain_get();
   if (work_obj != NULL) {
+    __atomic_store_n(&running_since_ms, monotonic_ms(), __ATOMIC_SEQ_CST);
     RPC_SRV_RESULT task_result =
         run_work(work_obj->command, work_obj->pWorkData);
+    __atomic_store_n(&running_since_ms, 0L, __ATOMIC_SEQ_CST);
     WORK_CMD_TASK_IN_PROG *work_inprog_obj = NULL;
     if (work_obj->resp_type == ADLIB_ASYNC_RESP_TYPE_TRIGGER)
       work_obj->done_action = WORK_CMD_AFTER_DONE_DELETE;
@@ -78,6 +86,7 @@ int ADTaskWorker::monoshot_callback_function(void *pUserData,
 }
 ADTaskWorker::ADTaskWorker() {
   notifyPortNum = -1;
+  running_since_ms = 0;
   pEventSink = NULL;
   work_inprog_chain_id = work_inprog_chain.attach_helper(this);
   work_inprog_chain.set_element_deleter(
@@ -214,8 +223,16 @@ bool ADTaskWorker::tasks_pending() {
 // tasks (clients send 'trigger_x' and then 'reset_task_status' back to
 // back) and is refused with RPC_SRV_RESULT_BUSY only if they still run.
 RPC_SRV_RESULT ADTaskWorker::reset_task_id_and_chain() {
-  for (int waited = 0; tasks_pending(); waited += 5) {
-    if (waited >= ADTASK_WORKER_RESET_WAIT_MS)
+  long start = monotonic_ms();
+  while (tasks_pending()) {
+    long now = monotonic_ms();
+    // the wait runs on the single RPC thread: give up at once when the
+    // running task already exceeded the window, so a long task (firmware
+    // update) costs one wait in total, not one per request (V3-H3)
+    long since = __atomic_load_n(&running_since_ms, __ATOMIC_SEQ_CST);
+    if (since != 0 && now - since >= ADTASK_WORKER_RESET_WAIT_MS)
+      return RPC_SRV_RESULT_BUSY;
+    if (now - start >= ADTASK_WORKER_RESET_WAIT_MS)
       return RPC_SRV_RESULT_BUSY;
     usleep(5000);
   }

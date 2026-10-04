@@ -22,6 +22,12 @@ std::string echo_len(const std::string &req, int id, int) {
 std::string stale_first(const std::string &, int id, int) {
   return result_reply(id - 1, "stale") + "\n" + result_reply(id, "fresh");
 }
+std::string answer_ok(const std::string &, int id, int) {
+  return result_reply(id, "ok");
+}
+std::string only_stale(const std::string &, int id, int) {
+  return result_reply(id + 100, "stale");
+}
 // closes the connection after answering the first request
 std::string close_after_first(const std::string &, int id, int n) {
   if (n == 2)
@@ -108,6 +114,31 @@ TEST_CASE("V2-M2: reconnect after the peer closed the connection") {
   CHECK(c.get_string_type((char *)"m", (char *)"message", out) ==
         RPC_SRV_RESULT_SUCCESS);
   CHECK(strcmp(out, "ok3") == 0);
+  c.rpc_server_disconnect();
+}
+
+// V3-M1: the truncated copy in recv_buffer was never written (self-memcpy)
+TEST_CASE("V3-M1: send_raw_data_and_receive_resp returns the response") {
+  FakeServer srv(test_port(), answer_ok);
+  ADJsonRpcClient c;
+  REQUIRE(c.rpc_server_connect("127.0.0.1", test_port()) == 0);
+  char *resp = c.send_raw_data_and_receive_resp(
+      (char *)"{\"jsonrpc\":\"2.0\",\"method\":\"m\",\"id\":5}");
+  REQUIRE(resp != NULL);
+  CHECK(strstr(resp, "\"Success\"") != NULL);
+  c.rpc_server_disconnect();
+}
+
+// V3-M1: only a stale answer arrives; it must not be returned as the result
+TEST_CASE("V3-M1: a stale answer at the deadline is not returned") {
+  FakeServer srv(test_port(), only_stale);
+  ADJsonRpcClient c;
+  c.set_receive_timeout(500);
+  REQUIRE(c.rpc_server_connect("127.0.0.1", test_port()) == 0);
+  char out[255];
+  CHECK(c.get_string_type((char *)"m", (char *)"message", out) !=
+        RPC_SRV_RESULT_SUCCESS);
+  CHECK(c.last_response().empty());
   c.rpc_server_disconnect();
 }
 

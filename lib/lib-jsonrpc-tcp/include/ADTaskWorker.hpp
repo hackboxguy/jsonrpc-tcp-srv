@@ -92,6 +92,7 @@ class ADTaskWorker : public ADTaskWorkerProducer,
   int work_chain_id;
   int work_inprog_chain_id;
   ADTaskWorkerEventSink *pEventSink;
+  long running_since_ms; // start of the running task (monotonic), 0 if idle
   void evict_completed_tasks();
   bool tasks_pending();
   virtual int identify_chain_element(void *element, int ident,

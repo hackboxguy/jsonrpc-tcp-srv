@@ -786,17 +786,14 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
   XmppClientThread.start_thread();
   return RPC_SRV_RESULT_SUCCESS;
 }
+// Returns RPC_SRV_RESULT_FAIL if the XMPP thread did not finish within
+// XMPPMGR_STOP_TIMEOUT_MS (it may be blocked inside gloox, e.g. in a BOSH
+// long-poll or a hanging connect); the caller should then end the process.
 RPC_SRV_RESULT XmppMgr::Stop() {
-  // XmppProxy.disconnect();
   XmppProxy.setForcedDisconnect();
   XmppProxy.disconnect();
-  // while(XmppProxy.get_connect_sts()==true && MaxTime++<50) //max 5sec wait
-  //{
-  //	usleep(100000);
-  //	cout<<"waiting for disconnect"<<endl;
-  // }
-  // XmppClientThread.stop_thread();
-  XmppClientThread.stop_thread();
+  if (XmppClientThread.stop_thread(XMPPMGR_STOP_TIMEOUT_MS) != 0)
+    return RPC_SRV_RESULT_FAIL;
   return RPC_SRV_RESULT_SUCCESS;
 }
 RPC_SRV_RESULT XmppMgr::set_online_status(bool status) {

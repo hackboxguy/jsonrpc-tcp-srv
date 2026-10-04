@@ -93,7 +93,7 @@ class ADThread : public ADThreadProducer {
   sem_t one_shot_sema;
   pthread_mutex_t ctrl_lock; // serializes start_thread/stop_thread
   void init_common();
-  int join_thread();
+  int join_thread(int max_wait_ms);
 
 public:
   ADThread();
@@ -104,6 +104,12 @@ public:
   int test_print();
   int my_thread_func(int thread_id);
   int stop_thread();
+  // Bounded variant for threads that run third-party blocking code: waits
+  // at most max_wait_ms and returns ETIMEDOUT if the thread is still busy
+  // (it keeps running, the stop request stays set). The object must then
+  // not be destroyed while the thread runs: the caller logs and ends the
+  // process (e.g. _exit()) or retries later.
+  int stop_thread(int max_wait_ms);
   int wakeup_thread(void);
   // true once stop_thread() was called; for NOBLOCK callbacks
   bool stop_requested();

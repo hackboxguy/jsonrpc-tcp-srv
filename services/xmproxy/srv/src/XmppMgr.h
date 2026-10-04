@@ -185,6 +185,8 @@ typedef struct XMPROXY_CMD_TABLE_T {
   EXMPP_USER_ACCESS_TYPES cmdaccess; // access-level
 } XMPROXY_CMD_TABLE;
 /* ------------------------------------------------------------------------- */
+// how long XmppMgr::Stop() waits for the XMPP thread (V3-H1)
+#define XMPPMGR_STOP_TIMEOUT_MS 3000
 #ifdef USE_CXMPP_LIB
 class XmppMgr : public CXmppConsumer,
                 public ADThreadConsumer,
@@ -379,7 +381,7 @@ public:
   XmppMgr();
   ~XmppMgr();
   RPC_SRV_RESULT Start(std::string accountFilePath);
-  RPC_SRV_RESULT Stop();
+  RPC_SRV_RESULT Stop(); // see XMPPMGR_STOP_TIMEOUT_MS
   RPC_SRV_RESULT SendMessage(std::string msg);
   void SetDebugLog(bool log);
   void SetAiAgentUrl(std::string url);

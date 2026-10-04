@@ -193,3 +193,12 @@ else()
     ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party
   )
 endif()
+
+# service-level test: SIGTERM while the XMPP server does not answer (V3-H1)
+if(ADLIB_BUILD_TESTS)
+  add_test(NAME xmproxysrv_stop
+           COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_stop.sh
+                   $<TARGET_FILE:${COMPONENT_NAME}>)
+  set_tests_properties(xmproxysrv_stop PROPERTIES SKIP_RETURN_CODE 77
+                       TIMEOUT 60)
+endif()

@@ -88,7 +88,9 @@ int ADJsonRpcClient::send_request() {
 // Receives the response to the request in tx_msg (finding V2-M2): responses
 // with another id are late answers to earlier, timed-out requests and are
 // skipped. A response without id / with id null (error replies) is
-// accepted. On failure rx_msg is empty, so every parser reports an error.
+// accepted; a late *error* reply to an earlier, timed-out request can
+// therefore be taken as the answer to the current request. On failure rx_msg is
+// empty, so every parser reports an error.
 int ADJsonRpcClient::receive_response(int timeout_ms) {
   if (rx_timeout_override > 0)
     timeout_ms = rx_timeout_override;
@@ -119,12 +121,13 @@ int ADJsonRpcClient::receive_response(int timeout_ms) {
       json_object_put(resp);
     if (match)
       break;
+    rx_msg.clear(); // a stale answer must not be returned at the deadline
   }
   if (!rx_msg.empty() && reconnect_needed == false) {
     size_t n = rx_msg.size() < MAX_RECV_BUFFER_SIZE - 1
                    ? rx_msg.size()
                    : MAX_RECV_BUFFER_SIZE - 1;
-    memcpy(rx_json(), rx_msg.data(), n);
+    memcpy(recv_buffer, rx_msg.data(), n);
     recv_buffer[n] = '\0';
     return (int)rx_msg.size();
   }

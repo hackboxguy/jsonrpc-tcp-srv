@@ -52,6 +52,8 @@ int ADNetServer::dup_if_same_client(int sock_descriptor, int cltid) {
       fd = fcntl(sock_descriptor, F_DUPFD_CLOEXEC, 0);
     return fd;
   }
+  if (connection_dead(cltid))
+    return -1; // dropped: discard its remaining responses
   clientInfo_chain.chain_lock();
   net_data_obj *info =
       (net_data_obj *)clientInfo_chain.chain_get_by_ident(sock_descriptor);
@@ -81,7 +83,7 @@ int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     long left = deadline - (ts.tv_sec * 1000L + ts.tv_nsec / 1000000L);
     if (left <= 0)
-      return -1;
+      return -2; // timed out: the peer does not read
     struct pollfd pfd;
     pfd.fd = fd;
     pfd.events = POLLOUT;
@@ -96,29 +98,49 @@ int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
 // client wait (V2-C3): shutdown() ends the socket for the listen thread
 // (it sees EOF and closes the fd), and removing the client record makes
 // dup_if_same_client() discard the remaining responses at once.
-void ADNetServer::drop_connection(int dup_fd, int socket_descriptor,
-                                  int cltid) {
-  LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
-                       "client fd=%d does not read its responses, dropping it",
-                       socket_descriptor);
-  shutdown(dup_fd, SHUT_RDWR);
-  if (cltid >= 0) {
-    net_data_obj *info =
-        (net_data_obj *)clientInfo_chain.chain_remove_by_double_ident(
-            socket_descriptor, cltid);
-    if (info != NULL)
-      OBJ_MEM_DELETE(info);
-  }
-  bool wake = false;
+bool ADNetServer::connection_dead(int cltid) {
+  if (cltid < 0)
+    return false;
   pthread_mutex_lock(&pending_lock);
   std::map<int, conn_pending>::iterator it = pending.find(cltid);
-  if (it != pending.end() && it->second.paused) {
-    it->second.paused = false; // let the listen thread see the EOF
-    wake = true;
-  }
+  bool dead = it != pending.end() && it->second.dead;
   pthread_mutex_unlock(&pending_lock);
+  return dead;
+}
+// Marks the connection dead (V3-H2). The client record, framer and pending
+// entry stay until the listen thread sees the EOF caused by shutdown() and
+// calls close_connection(); until then the fd number cannot be reused, and
+// the dead flag discards its unread requests and queued responses.
+void ADNetServer::drop_connection(int dup_fd, int socket_descriptor, int cltid,
+                                  bool timed_out) {
+  bool first = true;
+  bool wake = false;
+  if (cltid >= 0) {
+    pthread_mutex_lock(&pending_lock);
+    conn_pending &p = pending[cltid];
+    first = !p.dead;
+    p.dead = true;
+    if (p.paused) {
+      p.paused = false; // let the listen thread see the EOF
+      wake = true;
+    }
+    pthread_mutex_unlock(&pending_lock);
+  }
+  shutdown(dup_fd, SHUT_RDWR);
+  if (first) {
+    if (timed_out)
+      LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
+                           "client fd=%d does not read its responses, "
+                           "dropping it",
+                           socket_descriptor);
+    else
+      LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
+                           "client fd=%d: sending the response failed (peer "
+                           "reset?), dropping it",
+                           socket_descriptor);
+  }
   if (wake && write(wake_pipe[1], "r", 1) < 0) {
-    ; // the 1 s select timeout resumes it as well
+    ; // the select timeout resumes paused connections as well
   }
 }
 // one response of connection 'cltid' was sent or dropped
@@ -139,7 +161,7 @@ void ADNetServer::response_done(int cltid) {
   }
   pthread_mutex_unlock(&pending_lock);
   if (wake && write(wake_pipe[1], "r", 1) < 0) {
-    ; // the 1 s select timeout resumes it as well
+    ; // the select timeout resumes paused connections as well
   }
 }
 // listen thread: give paused connections whose backlog was answered back to
@@ -192,9 +214,11 @@ int ADNetServer::monoshot_callback_function(void *pUserData,
     while ((resp_obj = (net_data_obj *)response_chain.chain_get()) != NULL) {
       int fd = dup_if_same_client(resp_obj->sock_descriptor, resp_obj->cltid);
       if (fd >= 0) {
-        if (send_with_deadline(fd, resp_obj->data_buffer,
-                               resp_obj->data_buffer_len) != 0)
-          drop_connection(fd, resp_obj->sock_descriptor, resp_obj->cltid);
+        int src = send_with_deadline(fd, resp_obj->data_buffer,
+                                     resp_obj->data_buffer_len);
+        if (src != 0)
+          drop_connection(fd, resp_obj->sock_descriptor, resp_obj->cltid,
+                          src == -2);
         close(fd);
       }
       response_done(resp_obj->cltid);
@@ -232,6 +256,9 @@ int ADNetServer::thread_callback_function(void *pUserData,
       continue;
     }
     if (rc == 0) {
+      // a lost wake-up must not leave a connection paused for good
+      if (!paused_fds.empty())
+        resume_paused_connections();
       continue;
     }
     desc_ready = rc;
@@ -282,6 +309,8 @@ int ADNetServer::thread_callback_function(void *pUserData,
             setsockopt(new_sd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl,
                        sizeof(intvl));
             setsockopt(new_sd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+            // small pipelined requests/responses: no Nagle delay (V3-L5)
+            setsockopt(new_sd, IPPROTO_TCP, TCP_NODELAY, &ka, sizeof(ka));
             print_client_info(&in_addr, in_len, new_sd);
             if (sock_type == ADLIB_TCP_SOCKET_TYPE_JSON) {
               delete framers[new_sd]; // stale entry, must not happen
@@ -434,7 +463,8 @@ int ADNetServer::start_listening() {
   rc = listen(listen_sd, 32);
   if (rc < 0)
     return start_failed("listen()", listen_sd, listen_port);
-  if (pipe2(wake_pipe, O_CLOEXEC) != 0)
+  // non-blocking: the response thread must never block on a full pipe
+  if (pipe2(wake_pipe, O_CLOEXEC | O_NONBLOCK) != 0)
     return start_failed("pipe()", listen_sd, listen_port);
   FD_ZERO(&master_set);
   max_sd = listen_sd > wake_pipe[0] ? listen_sd : wake_pipe[0];
@@ -663,8 +693,13 @@ int ADNetServer::queue_framed_requests(int socket_descriptor) {
   char cltip[512];
   int cltport = -1;
   int cltid = -1;
-  if (get_client_info(socket_descriptor, cltip, &cltport, &cltid) != 0)
-    cltip[0] = '\0';
+  if (get_client_info(socket_descriptor, cltip, &cltport, &cltid) != 0 ||
+      connection_dead(cltid)) {
+    // unknown or dropped connection: never queue requests without a valid
+    // connection id (their responses could reach a reused fd, V3-H2)
+    it->second->reset();
+    return 0;
+  }
   std::string msg;
   int queued = 0;
   int paused = 0;

@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 /* ------------------------------------------------------------------------- */
 bool openwrt_system(ADCMN_BOARD_TYPE BoardType);
 /* ------------------------------------------------------------------------- */
@@ -156,7 +157,14 @@ int main(int argc, const char *argv[]) {
   // (locals declared after RpcMgr) are destroyed
   RpcMgr.Stop();
   AppTimer.stop_timer(); // joins the heart-beat threads
-  XmpManager.Stop();     // disconnect the xmpp server
+  // disconnect the xmpp server; if gloox does not return in time, end the
+  // process here instead of hanging until SIGKILL (V3-H1). Everything else
+  // was stopped above.
+  if (XmpManager.Stop() != RPC_SRV_RESULT_SUCCESS) {
+    LOG_ERR_MSG("xmproxysrv", "xmpp thread did not stop in time, exiting");
+    fflush(stdout);
+    _exit(0);
+  }
   // XmpManager.Stop();//disconnect the xmpp server
   return 0;
 }

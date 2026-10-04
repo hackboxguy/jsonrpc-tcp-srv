@@ -15,6 +15,7 @@ ADXmppProxy::ADXmppProxy() {
   DebugLog = false;
   failed_authorization = false;
   connected = false;
+  disconnect_request = false;
   HeartBeat = 0;
   DisconnectNow = false;
   OnDemandDisconnect = false; // user requested disconnection via rpc
@@ -40,17 +41,21 @@ ADXmppProxy::~ADXmppProxy() {
   PingThread.stop_thread();
 }
 /*****************************************************************************/
+// Asks the XMPP thread to disconnect and waits a little for it. The gloox
+// client is only touched by the XMPP thread (connect()), which checks the
+// request after every recv() (V3-H1); calling j->disconnect() from here raced
+// with recv() and with the delete of j.
 int ADXmppProxy::disconnect() {
-  if (j != NULL) {
-    j->disconnect();
+  if (get_connect_sts()) {
+    __atomic_store_n(&disconnect_request, true, __ATOMIC_SEQ_CST);
     // Wait for disconnection with timeout (max 2 seconds for BOSH)
     int timeout_count = 0;
     int max_timeout = UseBOSH ? 20 : 50; // 2 seconds for BOSH, 5 seconds for TCP
-    while (connected && timeout_count < max_timeout) {
+    while (get_connect_sts() && timeout_count < max_timeout) {
       usleep(100000); // 100ms
       timeout_count++;
     }
-    if (connected && DebugLog) {
+    if (get_connect_sts() && DebugLog) {
       cout << "ADXmppProxy::disconnect: Timeout waiting for disconnection, forcing close" << endl;
     }
   }
@@ -142,7 +147,9 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
 
   // myJid=jid;
   j = new Client(jid, password);
-  connected = true; // after creation of Client object, make this flag true
+  __atomic_store_n(&disconnect_request, false, __ATOMIC_SEQ_CST);
+  // after creation of Client object, make this flag true
+  __atomic_store_n(&connected, true, __ATOMIC_SEQ_CST);
 
   // Configure SASL mechanisms if specified
   if (!SaslMech.empty()) {
@@ -299,12 +306,19 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
   HeartBeat = 0;
 
   ConnectionError ce = ConnNoError;
+  // TCP: recv() returns at least every 500 ms so a stop or disconnect
+  // request is seen quickly (V3-H1). BOSH keeps the blocking recv(): short
+  // BOSH recv timeouts caused "Too many requests" (see CLAUDE.md); there the
+  // request is seen when the current long-poll returns.
+  const int recv_timeout_us = UseBOSH ? -1 : 500000;
   if (j->connect(false)) {
     while (ce == ConnNoError) {
-      // Use blocking recv() - BOSH will handle timing internally
-      ce = j->recv();
-      if (DebugLog)
-        cout << "ADXmppProxy::connect:Message Arrived!!!" << endl;
+      ce = j->recv(recv_timeout_us);
+      if (__atomic_load_n(&disconnect_request, __ATOMIC_SEQ_CST) ||
+          getForcedDisconnect()) {
+        j->disconnect();
+        break;
+      }
     }
 
     // Enhanced error logging (especially for BOSH)
@@ -371,7 +385,7 @@ int ADXmppProxy::connect(char *user, char *password, std::string adminbuddy,
   delete (j);
   j = NULL;
 
-  connected = false;
+  __atomic_store_n(&connected, false, __ATOMIC_SEQ_CST);
 
   if (DebugLog)
     cout << "ADXmppProxy::connect: exiting<===" << endl;

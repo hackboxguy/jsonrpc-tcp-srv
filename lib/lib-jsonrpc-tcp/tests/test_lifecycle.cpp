@@ -127,6 +127,72 @@ TEST_CASE("V2-C1: handler destroyed after Stop() while clients keep sending") {
   }
 }
 
+namespace {
+struct DropFlood {
+  int port;
+  long dropped_at; // ms when the server dropped us (send failed), 0 = never
+};
+// floods 'test_slow' requests with a tiny receive buffer, never reads
+void *flood_slow_requests(void *p) {
+  DropFlood *a = (DropFlood *)p;
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int small = 4096;
+  setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &small, sizeof(small));
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  addr.sin_port = htons(a->port);
+  if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+    close(fd);
+    return NULL;
+  }
+  std::string batch;
+  for (int i = 0; i < 50; i++)
+    batch += "{\"jsonrpc\":\"2.0\",\"method\":\"test_slow\",\"id\":" +
+             std::to_string(i) + ",\"params\":{\"pad\":\"" +
+             std::string(200, 'p') + "\"}}";
+  long end = now_ms() + 20000;
+  while (now_ms() < end) {
+    ssize_t rc =
+        send(fd, batch.data(), batch.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
+    if (rc < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      a->dropped_at = now_ms();
+      break;
+    }
+    if (rc <= 0)
+      usleep(2000);
+  }
+  close(fd);
+  return NULL;
+}
+} // namespace
+
+// V3-H2: after a connection was dropped, its unread requests used to be
+// queued without a connection id (no cap, responses to whatever socket had
+// that fd number next)
+TEST_CASE("V3-H2: nothing of a dropped connection is processed afterwards") {
+  int port = test_port(2);
+  ADJsonRpcMgr mgr(1, false, NULL);
+  SlowHandler h;
+  mgr.AttachRpc(&h);
+  REQUIRE(mgr.Start(port, 0, 0) == 0);
+  DropFlood arg;
+  arg.port = port;
+  arg.dropped_at = 0;
+  pthread_t th;
+  pthread_create(&th, NULL, flood_slow_requests, &arg);
+  pthread_join(th, NULL);
+  REQUIRE(arg.dropped_at != 0); // the server dropped the non-reader
+  int at_drop = __atomic_load_n(&h.calls, __ATOMIC_SEQ_CST);
+  usleep(1500000);
+  int later = __atomic_load_n(&h.calls, __ATOMIC_SEQ_CST);
+  // at most what was already queued (per-connection cap) plus in flight
+  CHECK(later - at_drop <= AD_NET_SERVER_MAX_PENDING_PER_CONN + 50);
+  CHECK(server_alive(port));
+  mgr.Stop();
+}
+
 // V2-H1: Start() used to return 0 although nothing was listening
 TEST_CASE("V2-H1: Start() on a busy port returns an error") {
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -370,6 +436,22 @@ TEST_CASE("V2-M3: reset right after a short task waits for it") {
   REQUIRE(tw.push_task(0, NULL, &id) == 0);
   CHECK_EQ(id, 1);
   CHECK(wait_ran(w, 2));
+}
+
+// V3-H3: every reset_task_status used to block the single RPC thread for
+// 1 s while a long task ran
+TEST_CASE("V3-H3: resets during a long task do not stall the RPC thread") {
+  LongWorker w(false); // 6 s task
+  ADTaskWorker tw;
+  tw.attach_helper(&w);
+  int id;
+  REQUIRE(tw.push_task(1, NULL, &id) == 0);
+  usleep(100000);
+  long t0 = now_ms();
+  for (int i = 0; i < 10; i++)
+    CHECK(tw.reset_task_id_and_chain() == RPC_SRV_RESULT_BUSY);
+  CHECK(now_ms() - t0 < 1500); // one wait window in total, not ten
+  tw.stop();
 }
 
 // V2-M8: a second start leaked the socket and threads; Stop() and the

@@ -81,9 +81,10 @@ int ADThread::my_thread_func(int thread_id) {
   __atomic_store_n(&finished, 1, __ATOMIC_SEQ_CST);
   return 0;
 }
-// joins the thread; cancels it only if it does not finish in time
-// waits for the thread without ever cancelling it (see ADThread.hpp)
-int ADThread::join_thread() {
+// Waits for the thread without ever cancelling it (see ADThread.hpp).
+// max_wait_ms < 0: wait as long as needed; else give up after max_wait_ms
+// and return ETIMEDOUT without joining (the thread keeps running).
+int ADThread::join_thread(int max_wait_ms) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   long start = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
@@ -93,6 +94,11 @@ int ADThread::join_thread() {
     usleep(pause_us);
     if (pause_us < 2000)
       pause_us *= 2;
+    if (max_wait_ms >= 0) {
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      if (ts.tv_sec * 1000L + ts.tv_nsec / 1000000L - start >= max_wait_ms)
+        return ETIMEDOUT;
+    }
     if (stop_timeout_ms <= 0)
       continue;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -121,7 +127,7 @@ int ADThread::start_thread(void) {
       pthread_mutex_unlock(&ctrl_lock);
       return -1; // already running
     }
-    join_thread(); // a NOBLOCK callback that already returned
+    join_thread(-1); // a NOBLOCK callback that already returned
     started = false;
   }
   // drop wakeups left over from a previous run
@@ -141,7 +147,8 @@ int ADThread::start_thread(void) {
   pthread_mutex_unlock(&ctrl_lock);
   return 0;
 }
-int ADThread::stop_thread() {
+int ADThread::stop_thread() { return stop_thread(-1); }
+int ADThread::stop_thread(int max_wait_ms) {
   pthread_mutex_lock(&ctrl_lock);
   if (!started) {
     pthread_mutex_unlock(&ctrl_lock);
@@ -157,7 +164,10 @@ int ADThread::stop_thread() {
   __atomic_store_n(&thread_state, (int)THREAD_STATE_INACTIVE, __ATOMIC_SEQ_CST);
   if (th_type == THREAD_TYPE_MONOSHOT)
     sem_post(&one_shot_sema);
-  join_thread();
+  if (join_thread(max_wait_ms) == ETIMEDOUT) {
+    pthread_mutex_unlock(&ctrl_lock);
+    return ETIMEDOUT; // still running; stop is still requested
+  }
   started = false;
   pthread_mutex_unlock(&ctrl_lock);
   return 0;

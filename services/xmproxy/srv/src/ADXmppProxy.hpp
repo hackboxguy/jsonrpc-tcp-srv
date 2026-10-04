@@ -102,14 +102,25 @@ public:
   BoshUrlComponents parseBoshUrl(const std::string &url);
   int send_reply(std::string reply, std::string sender = "");
   int receive_request(std::string request, std::string sender);
-  bool get_connect_sts() { return connected; };
+  bool get_connect_sts() {
+    return __atomic_load_n(&connected, __ATOMIC_SEQ_CST);
+  };
   void SetDebugLog(bool log);
   void send_client_alive_ping();
   const std::string currentDateTime();
-  bool getForcedDisconnect() { return DisconnectNow; }
-  void setForcedDisconnect() { DisconnectNow = true; }
-  bool getOnDemandDisconnect() { return OnDemandDisconnect; }
-  void setOnDemandDisconnect(bool flag) { OnDemandDisconnect = flag; }
+  // flags shared between the XMPP thread, the RPC thread and main()
+  bool getForcedDisconnect() {
+    return __atomic_load_n(&DisconnectNow, __ATOMIC_SEQ_CST);
+  }
+  void setForcedDisconnect() {
+    __atomic_store_n(&DisconnectNow, true, __ATOMIC_SEQ_CST);
+  }
+  bool getOnDemandDisconnect() {
+    return __atomic_load_n(&OnDemandDisconnect, __ATOMIC_SEQ_CST);
+  }
+  void setOnDemandDisconnect(bool flag) {
+    __atomic_store_n(&OnDemandDisconnect, flag, __ATOMIC_SEQ_CST);
+  }
 
   // for sending asyc-event to a buddy
   bool SendMessageToBuddy(std::string address, const std::string &body,
@@ -190,6 +201,9 @@ private:
   bool DebugLog;
   bool failed_authorization;
   bool connected;
+  // set by disconnect() from any thread; the XMPP thread disconnects the
+  // gloox client itself (gloox is not thread-safe, finding V3-H1)
+  bool disconnect_request;
   int HeartBeat;
   // JID myJid;
   Client *j;

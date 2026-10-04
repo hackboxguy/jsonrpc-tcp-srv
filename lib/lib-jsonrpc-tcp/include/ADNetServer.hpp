@@ -124,7 +124,10 @@ class ADNetServer : public ADNetProducer,
   struct conn_pending {
     int count;
     bool paused;
-    conn_pending() : count(0), paused(false) {}
+    // dropped by the response thread (V3-H2): no more requests are queued and
+    // no responses sent; the listen thread still owns and closes the fd
+    bool dead;
+    conn_pending() : count(0), paused(false), dead(false) {}
   };
   pthread_mutex_t pending_lock;
   pthread_mutex_t ctrl_lock; // serializes start/stop
@@ -134,7 +137,9 @@ class ADNetServer : public ADNetProducer,
   int queue_framed_requests(int socket_descriptor);
   void response_done(int cltid);
   void resume_paused_connections();
-  void drop_connection(int dup_fd, int socket_descriptor, int cltid);
+  void drop_connection(int dup_fd, int socket_descriptor, int cltid,
+                       bool timed_out);
+  bool connection_dead(int cltid);
   int id_listen_thread;
   int id_response_thread;
   ADThread listen_thread;
