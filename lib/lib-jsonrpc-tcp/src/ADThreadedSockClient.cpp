@@ -25,6 +25,8 @@ int ADThreadedSockClient::thread_callback_function(void *pUserData,
                                                    ADThreadProducer *pObj) {
   CmdExecutionObj *pCmdObj = NULL;
   ADJsonRpcClient SrvSockConn;
+  // the command objects hold JSON_RPC_METHOD_RESP_MAX_LENGTH byte fields
+  SrvSockConn.set_output_size(JSON_RPC_METHOD_RESP_MAX_LENGTH);
   int commands = cmd_chain.get_chain_size();
   if (commands == 0) {
     running = 0;

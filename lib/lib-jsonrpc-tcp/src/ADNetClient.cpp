@@ -218,42 +218,53 @@ int ADNetClient::receive_data_blocking(char *recv_buf, int buf_total_size,
   return data;
 }
 
+int ADNetClient::receive_json_blocking(std::string &out, int timeout_ms) {
+  out.clear();
+  if (!connected)
+    return -1;
+  CmdTimer.reset();
+  long deadline = monotonic_ms() + (timeout_ms > 0 ? timeout_ms : 0);
+  int result = -1;
+  for (;;) {
+    if (rx_framer.next(out)) {
+      result = (int)out.size();
+      break;
+    }
+    if (rx_framer.has_error()) {
+      result = -2;
+      break;
+    }
+    long left = deadline - monotonic_ms();
+    if (left <= 0 || wait_readable((int)left) != 1)
+      break; // timeout
+    char chunk[4096];
+    ssize_t rc = recv(sockfd, chunk, sizeof(chunk), MSG_DONTWAIT);
+    if (rc < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+      continue;
+    if (rc <= 0) {
+      result = -2; // peer closed or socket error
+      break;
+    }
+    rx_framer.feed(chunk, rc);
+  }
+  time_elapsed = CmdTimer.elapsed();
+  return result;
+}
+
 int ADNetClient::receive_json_blocking(char *recv_buf, int buf_total_size,
                                        int timeout_ms) {
   if (!connected || !recv_buf || buf_total_size <= 0)
     return -1;
   recv_buf[0] = '\0';
-
-  CmdTimer.reset();
-  long deadline = monotonic_ms() + (timeout_ms > 0 ? timeout_ms : 0);
-  int result = -1;
   std::string msg;
-  for (;;) {
-    if (rx_framer.next(msg)) {
-      size_t n = msg.size();
-      if (n > (size_t)buf_total_size - 1)
-        n = buf_total_size - 1;
-      memcpy(recv_buf, msg.data(), n);
-      recv_buf[n] = '\0';
-      result = (int)n;
-      break;
-    }
-    if (rx_framer.has_error())
-      break;
-    long left = deadline - monotonic_ms();
-    if (left <= 0 || wait_readable((int)left) != 1)
-      break;
-    char chunk[4096];
-    ssize_t rc = recv(sockfd, chunk, sizeof(chunk), MSG_DONTWAIT);
-    if (rc < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
-      continue;
-    if (rc <= 0)
-      break; // peer closed or error
-    rx_framer.feed(chunk, rc);
-  }
-
-  time_elapsed = CmdTimer.elapsed();
-  return result;
+  if (receive_json_blocking(msg, timeout_ms) < 0)
+    return -1;
+  size_t n = msg.size();
+  if (n > (size_t)buf_total_size - 1)
+    n = buf_total_size - 1;
+  memcpy(recv_buf, msg.data(), n);
+  recv_buf[n] = '\0';
+  return (int)n;
 }
 
 double ADNetClient::get_communication_time_in_ms() const {

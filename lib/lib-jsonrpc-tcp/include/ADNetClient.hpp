@@ -62,6 +62,10 @@ public:
   // (truncated if larger). Returns its length, or -1 on timeout, error, peer
   // close or a framing error.
   int receive_json_blocking(char *recv_buf, int buf_total_size, int timeout_ms);
+  // same without truncation; returns the length, -1 on timeout or error,
+  // -2 if the peer closed the connection or sent something that is not JSON
+  int receive_json_blocking(std::string &out, int timeout_ms);
+  bool is_connected() const { return connected; }
   void set_connect_timeout(int timeout_ms) { connect_timeout_ms = timeout_ms; }
 
   // Status and information

@@ -81,17 +81,17 @@ public:
   int calls;
   SlowHandler()
       : ADJsonRpcMgrConsumer("test_slow", 0, false, false), calls(0) {}
-  virtual int MapJsonToBinary(JsonDataCommObj *pReq, int index) {
+  virtual int MapJsonToBinary(JsonDataCommObj *pReq, int idx) {
     __atomic_add_fetch(&calls, 1, __ATOMIC_SEQ_CST);
     usleep(200);
     return -1; // answered with an error reply, enough for the test
   }
-  virtual int MapBinaryToJson(JsonDataCommObj *pReq, int index) { return 0; }
-  virtual int ProcessWork(JsonDataCommObj *pReq, int index,
+  virtual int MapBinaryToJson(JsonDataCommObj *pReq, int idx) { return 0; }
+  virtual int ProcessWork(JsonDataCommObj *pReq, int idx,
                           ADJsonRpcMgrProducer *pObj) {
     return 0;
   }
-  virtual RPC_SRV_RESULT ProcessWorkAsync(int index, unsigned char *pData) {
+  virtual RPC_SRV_RESULT ProcessWorkAsync(int idx, unsigned char *pData) {
     return RPC_SRV_RESULT_SUCCESS;
   }
   virtual void ReceiveEvent(int cltToken, int evntNum, int evntArg,

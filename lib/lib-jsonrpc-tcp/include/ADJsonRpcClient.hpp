@@ -3,12 +3,45 @@
 #include "ADCmnStringProcessor.hpp"
 #include "ADJsonRpcProxy.hpp"
 #include "ADNetClient.hpp"
+#include <string>
 #define MAX_RECV_BUFFER_SIZE 1400
 #define MAX_SEND_BUFFER_SIZE 1400
+// Strings copied out of a response into caller buffers are truncated to the
+// output size (NUL included). The default is the historical caller contract
+// of 255-byte buffers; set_output_size() raises it up to
+// ADJSONRPC_CLIENT_MAX_OUT_SIZE for callers with larger buffers.
+#define ADJSONRPC_CLIENT_DEFAULT_OUT_SIZE 255
+#define ADJSONRPC_CLIENT_MAX_OUT_SIZE JSON_RPC_METHOD_RESP_MAX_LENGTH
 class ADJsonRpcClient : public ADCmnStringProcessor {
   int req_id;
+  // Requests and responses are kept whole here (finding V2-C2);
+  // send_buffer/recv_buffer below only hold truncated copies for old code
+  // that reads them.
+  std::string tx_msg;
+  std::string rx_msg;
+  int tx_id;               // id of the request in tx_msg, -1 if none
+  size_t out_size;         // bound for strings copied to caller buffers
+  int rx_timeout_override; // > 0: replaces the per-call receive timeouts
+  bool reconnect_needed;   // the peer closed the connection
+  int store_request(char *result, json_object *request);
+  int send_request();
+  int receive_response(int timeout_ms);
+  void copy_out(char *dst, const char *src);
+  char *rx_json() { return (char *)rx_msg.c_str(); }
 
 public:
+  // see ADJSONRPC_CLIENT_DEFAULT_OUT_SIZE; clamped to
+  // [1, ADJSONRPC_CLIENT_MAX_OUT_SIZE]
+  void set_output_size(size_t size);
+  // receive timeout for all calls in ms (0: the per-call defaults, 4-80 s)
+  void set_receive_timeout(int timeout_ms) { rx_timeout_override = timeout_ms; }
+  // connect timeout in ms (default AD_NET_CLIENT_CONNECT_TIMEOUT_MS)
+  void set_connect_timeout(int timeout_ms) {
+    ClientSocket.set_connect_timeout(timeout_ms);
+  }
+  // the complete last response (not truncated)
+  const std::string &last_response() const { return rx_msg; }
+
   bool connected;
   ADNetClient ClientSocket;
   char send_buffer[MAX_SEND_BUFFER_SIZE];

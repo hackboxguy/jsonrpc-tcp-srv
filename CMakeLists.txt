@@ -50,6 +50,21 @@ if(ADLIB_SAN_FLAGS)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ADLIB_SAN_FLAGS}")
 endif()
 
+# Release hardening: turns overflows of fixed buffers into a clean abort.
+# Off by default when cross compiling (some OpenWrt toolchains lack libssp).
+if(CMAKE_CROSSCOMPILING)
+    set(ADLIB_HARDENING_DEFAULT OFF)
+else()
+    set(ADLIB_HARDENING_DEFAULT ON)
+endif()
+option(ADLIB_HARDENING "Build with -D_FORTIFY_SOURCE=2 -fstack-protector-strong" ${ADLIB_HARDENING_DEFAULT})
+if(ADLIB_HARDENING AND NOT ADLIB_SAN_FLAGS)
+    # -U first: some toolchains predefine _FORTIFY_SOURCE (redefinition
+    # would be a -Werror failure). FORTIFY needs optimization (-Os above).
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -fstack-protector-strong")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -fstack-protector-strong")
+endif()
+
 if(ADLIB_STRICT_WARNINGS)
     set(ADLIB_WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter -Wshadow -Wformat=2")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
