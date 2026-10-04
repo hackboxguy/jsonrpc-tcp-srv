@@ -23,6 +23,46 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os")  # Optimize for size
 endif()
 
+# -----------------------------------------------------------------------------
+# Safety net: sanitizers, strict warnings, unit tests
+# -----------------------------------------------------------------------------
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(ADLIB_SANITIZE "none" CACHE STRING "Sanitizer build: none|address|thread|undefined")
+set_property(CACHE ADLIB_SANITIZE PROPERTY STRINGS none address thread undefined)
+option(ADLIB_STRICT_WARNINGS "Enable -Wall -Wextra and friends (reported, not fatal)" OFF)
+option(ADLIB_BUILD_TESTS "Build lib unit/integration tests (run with ctest)" OFF)
+
+if(ADLIB_SANITIZE STREQUAL "address")
+    # ASan and UBSan are combined into one preset; TSan needs its own build.
+    set(ADLIB_SAN_FLAGS "-fsanitize=address,undefined -fno-sanitize-recover=undefined")
+elseif(ADLIB_SANITIZE STREQUAL "thread")
+    set(ADLIB_SAN_FLAGS "-fsanitize=thread")
+elseif(ADLIB_SANITIZE STREQUAL "undefined")
+    set(ADLIB_SAN_FLAGS "-fsanitize=undefined -fno-sanitize-recover=undefined")
+elseif(NOT ADLIB_SANITIZE STREQUAL "none")
+    message(FATAL_ERROR "ADLIB_SANITIZE must be none|address|thread|undefined")
+endif()
+if(ADLIB_SAN_FLAGS)
+    # later -O1 overrides the -Os above
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ADLIB_SAN_FLAGS} -fno-omit-frame-pointer -O1 -g")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ADLIB_SAN_FLAGS} -fno-omit-frame-pointer -O1 -g")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${ADLIB_SAN_FLAGS}")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ADLIB_SAN_FLAGS}")
+endif()
+
+if(ADLIB_STRICT_WARNINGS)
+    set(ADLIB_WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter -Wshadow -Wformat=2")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(ADLIB_WARN_FLAGS "${ADLIB_WARN_FLAGS} -Wformat-overflow=2 -Wformat-truncation=2 -Wduplicated-cond -Wlogical-op")
+    endif()
+    # warnings are reported but not fatal until the backlog is cleaned up
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ADLIB_WARN_FLAGS} -Wno-error")
+endif()
+
+if(ADLIB_BUILD_TESTS)
+    enable_testing()
+endif()
+
 if(${SDSRV_USE_MUSL})
 	add_definitions(-DSDSRV_USE_MUSL_LIB)
 endif()
@@ -46,8 +86,10 @@ install(CODE "
 	 OUTPUT_VARIABLE TEST_OUTPUT
  	 RESULT_VARIABLE TEST_RESULT
  	)
+  set(AUTO_TEST_FAILED 0)
   if(NOT TEST_RESULT EQUAL 0) 
 	  message(STATUS \"\${RED}stress-sysmgr:fail!!! \${TEST_OUTPUT}\${RESET}\")
+	  set(AUTO_TEST_FAILED 1)
   else()
 	  message(STATUS \"\${GREEN}stress-sysmgr:pass\${RESET}\")
   endif()
@@ -60,6 +102,7 @@ install(CODE "
         )
   if(NOT TEST_RESULT EQUAL 0)
           message(STATUS \"\${RED}stress-xmproxysrv:fail!!! \${TEST_OUTPUT}\${RESET}\")
+          set(AUTO_TEST_FAILED 1)
   else()
           message(STATUS \"\${GREEN}stress-xmproxysrv:pass\${RESET}\")
   endif()
@@ -68,6 +111,9 @@ install(CODE "
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stop-xmproxysrv.sh\")
   execute_process(COMMAND /bin/bash -c \"CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/tests/bin/stop-sysmgr.sh\")
   message(STATUS \"---------Automated Runtime test finished--------\")
+  if(AUTO_TEST_FAILED)
+    message(FATAL_ERROR \"Automated runtime test failed\")
+  endif()
 ")
 endif()
 

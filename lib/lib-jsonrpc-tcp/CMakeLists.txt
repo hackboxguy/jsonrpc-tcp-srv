@@ -38,10 +38,15 @@ find_package(json-c REQUIRED)
 target_link_libraries(${ADCMN_LIBNAME} PUBLIC json-c)
 target_include_directories(${ADCMN_LIBNAME} PUBLIC ${JSON_INCLUDE_DIRS})
 
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# Set C++ standard (must be a target property; setting CMAKE_CXX_STANDARD
+# after add_library() has no effect on the target)
+target_compile_features(${ADCMN_LIBNAME} PUBLIC cxx_std_11)
+find_package(Threads REQUIRED)
+target_link_libraries(${ADCMN_LIBNAME} PUBLIC Threads::Threads)
+
+if(ADLIB_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
 
 # Install the library and headers
 file(GLOB PUBLIC_HEADERS "include/*.h")  # Use GLOB for headers if there are many
