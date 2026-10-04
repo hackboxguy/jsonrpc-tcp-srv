@@ -88,16 +88,20 @@ void ADJsonRpcProxy::stop() {
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
+// Thread-safe (finding V2-M4): called from the listen thread and RespThread;
+// the result is in thread-local storage and valid until the next call on
+// the same thread.
 char *ADJsonRpcProxy::get_timestamp() {
+  static __thread char stamp[64];
   char buffer[30];
   struct timeval tv;
-  time_t curtime;
-  request_timestamp[0] = '\0';
+  struct tm tm_now;
   gettimeofday(&tv, NULL);
-  curtime = tv.tv_sec;
-  strftime(buffer, 30, "%T.", localtime(&curtime));
-  sprintf(request_timestamp, "%s%03ld", buffer, (tv.tv_usec / 1000));
-  return request_timestamp;
+  time_t curtime = tv.tv_sec;
+  localtime_r(&curtime, &tm_now);
+  strftime(buffer, sizeof(buffer), "%T.", &tm_now);
+  snprintf(stamp, sizeof(stamp), "%s%03ld", buffer, (long)(tv.tv_usec / 1000));
+  return stamp;
 }
 int ADJsonRpcProxy::start_listening(int port, int socket_log) {
   socketlog = socket_log;
@@ -449,7 +453,7 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
     return -1;
   }
   json_object_put(new_obj);
-  total_req_received++;
+  __atomic_add_fetch(&total_req_received, 1, __ATOMIC_RELAXED);
   return 0;
 }
 int ADJsonRpcProxy::json_send_response(struct api_task_obj *pTaskObj) {
@@ -494,7 +498,7 @@ int ADJsonRpcProxy::json_process_rsponse() {
     MEM_DELETE(pTaskObj->json_resp_string);
   OBJ_MEM_DELETE(pTaskObj);
   OBJ_MEM_DELETE(pRespID);
-  total_res_sent++;
+  __atomic_add_fetch(&total_res_sent, 1, __ATOMIC_RELAXED);
   return 0;
 }
 int ADJsonRpcProxy::json_send_new_result(api_task_obj *resp_obj) {

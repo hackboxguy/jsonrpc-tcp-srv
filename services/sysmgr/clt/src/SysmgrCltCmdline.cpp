@@ -1,5 +1,7 @@
 #include "SysmgrCltCmdline.h"
 #include "ADJsonRpcMgr.hpp"
+#include <cstring>
+#include <string>
 using namespace std;
 /* ------------------------------------------------------------------------- */
 SysmgrCltCmdline::SysmgrCltCmdline() {
@@ -432,13 +434,18 @@ int SysmgrCltCmdline::run_get_info_command(
       pCmdObj->first_arg_param_value, pCmdObj->second_arg_param_name,
       pCmdObj->second_arg_param_value, pCmdObj->third_arg_param_name,
       pCmdObj->third_arg_param_value);
-  int len =
-      snprintf(pCmdObj->fourth_arg_param_value,
-               sizeof(pCmdObj->fourth_arg_param_value), "%s:%s,%s:%s,%s:%s",
-               pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
-               pCmdObj->second_arg_param_name, pCmdObj->second_arg_param_value,
-               pCmdObj->third_arg_param_name, pCmdObj->third_arg_param_value);
-  if (len < sizeof(pCmdObj->fourth_arg_param_value))
+  // "name1:val1,name2:val2,name3:val3", truncated to fit (snprintf semantics)
+  std::string info = std::string(pCmdObj->first_arg_param_name) + ":" +
+                     pCmdObj->first_arg_param_value + "," +
+                     pCmdObj->second_arg_param_name + ":" +
+                     pCmdObj->second_arg_param_value + "," +
+                     pCmdObj->third_arg_param_name + ":" +
+                     pCmdObj->third_arg_param_value;
+  const size_t cap = sizeof(pCmdObj->fourth_arg_param_value);
+  const size_t n = info.size() < cap ? info.size() : cap - 1;
+  memcpy(pCmdObj->fourth_arg_param_value, info.data(), n);
+  pCmdObj->fourth_arg_param_value[n] = '\0';
+  if (info.size() < cap)
     pOrig->log_print_message(pSrvSockConn, pCmdObj->get_rpc_name,
                              RPC_SRV_ACT_READ, pCmdObj->result, pOutMsgList,
                              pCmdObj->fourth_arg_param_value);

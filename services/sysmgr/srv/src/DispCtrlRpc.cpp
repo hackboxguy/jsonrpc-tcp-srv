@@ -10,8 +10,8 @@ DispCtrlRpc::DispCtrlRpc(std::string rpcName, int myIndex, bool emu, bool log,
 /* ------------------------------------------------------------------------- */
 DispCtrlRpc::~DispCtrlRpc() {}
 /* ------------------------------------------------------------------------- */
-int DispCtrlRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+int DispCtrlRpc::MapJsonToBinary(JsonDataCommObj *pReq, int idx) {
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_DISP_CLEAR:
     return json_to_bin_disp_clear(pReq);
@@ -27,8 +27,8 @@ int DispCtrlRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
   return -1;
 }
 /* ------------------------------------------------------------------------- */
-int DispCtrlRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+int DispCtrlRpc::MapBinaryToJson(JsonDataCommObj *pReq, int idx) {
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_DISP_CLEAR:
     return bin_to_json_disp_clear(pReq);
@@ -44,9 +44,9 @@ int DispCtrlRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
   return -1;
 }
 /* ------------------------------------------------------------------------- */
-int DispCtrlRpc::ProcessWork(JsonDataCommObj *pReq, int index,
+int DispCtrlRpc::ProcessWork(JsonDataCommObj *pReq, int idx,
                              ADJsonRpcMgrProducer *pObj) {
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_DISP_CLEAR:
     return process_disp_clear(pReq, pDataCache);
@@ -62,7 +62,7 @@ int DispCtrlRpc::ProcessWork(JsonDataCommObj *pReq, int index,
   return 0;
 }
 /* ------------------------------------------------------------------------- */
-RPC_SRV_RESULT DispCtrlRpc::ProcessWorkAsync(int index,
+RPC_SRV_RESULT DispCtrlRpc::ProcessWorkAsync(int idx,
                                              unsigned char *pWorkData) {
   RPC_SRV_RESULT ret_val = RPC_SRV_RESULT_FAIL;
 
@@ -85,8 +85,6 @@ int DispCtrlRpc::process_disp_clear(JsonDataCommObj *pReq,
   DisplayDevice *pDisp = (DisplayDevice *)pData->pDisplay;
   RPC_SRV_REQ *pPanelReq = NULL;
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
-  SYSMGR_PRINT_PACKET *pPacket;
-  pPacket = (SYSMGR_PRINT_PACKET *)pPanelReq->dataRef;
   if (pData->pDisplay != NULL)
     pPanelReq->result = pDisp->clear_display();
   else

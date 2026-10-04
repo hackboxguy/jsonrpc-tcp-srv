@@ -263,6 +263,27 @@ TEST_CASE("V2-C3: a client that does not read does not delay others") {
   CHECK(arg.sent > 0);
 }
 
+// V2-M4: with socket logging on, the listen thread and RespThread both
+// format timestamps and update the counters (run under TSan)
+TEST_CASE("V2-M4: socket logging from several threads") {
+  TestServer *logged = new TestServer(test_port(3), 1);
+  const int N = 4;
+  pthread_t th[N];
+  ClientArg args[N];
+  for (int i = 0; i < N; i++) {
+    args[i].port = logged->port;
+    args[i].base = (i + 1) * 1000;
+    args[i].count = 50;
+    args[i].ok = 0;
+    pthread_create(&th[i], NULL, client_thread, &args[i]);
+  }
+  for (int i = 0; i < N; i++) {
+    pthread_join(th[i], NULL);
+    CHECK_EQ(args[i].ok, 50);
+  }
+  delete logged;
+}
+
 // C4: a peer that accepts and never replies must not block the client
 TEST_CASE("C4: client call against a black-hole server times out") {
   int lfd = socket(AF_INET, SOCK_STREAM, 0);

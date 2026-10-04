@@ -32,6 +32,15 @@ set_property(CACHE ADLIB_SANITIZE PROPERTY STRINGS none address thread undefined
 option(ADLIB_STRICT_WARNINGS "Enable -Wall -Wextra and friends (reported, not fatal)" OFF)
 option(ADLIB_BUILD_TESTS "Build lib unit/integration tests (run with ctest)" OFF)
 
+option(ADLIB_FUZZ "Build libFuzzer targets (clang; implies ASan+UBSan, sets ADLIB_BUILD_TESTS)" OFF)
+if(ADLIB_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        message(FATAL_ERROR "ADLIB_FUZZ needs clang (CXX=clang++)")
+    endif()
+    set(ADLIB_SANITIZE "address")
+    set(ADLIB_BUILD_TESTS ON)
+endif()
+
 if(ADLIB_SANITIZE STREQUAL "address")
     # ASan and UBSan are combined into one preset; TSan needs its own build.
     set(ADLIB_SAN_FLAGS "-fsanitize=address,undefined -fno-sanitize-recover=undefined")
@@ -41,6 +50,11 @@ elseif(ADLIB_SANITIZE STREQUAL "undefined")
     set(ADLIB_SAN_FLAGS "-fsanitize=undefined -fno-sanitize-recover=undefined")
 elseif(NOT ADLIB_SANITIZE STREQUAL "none")
     message(FATAL_ERROR "ADLIB_SANITIZE must be none|address|thread|undefined")
+endif()
+if(ADLIB_FUZZ)
+    # coverage instrumentation everywhere; the fuzzer runtime is linked
+    # into the fuzz targets only
+    set(ADLIB_SAN_FLAGS "${ADLIB_SAN_FLAGS} -fsanitize=fuzzer-no-link")
 endif()
 if(ADLIB_SAN_FLAGS)
     # later -O1 overrides the -Os above
@@ -70,19 +84,29 @@ if(ADLIB_STRICT_WARNINGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         set(ADLIB_WARN_FLAGS "${ADLIB_WARN_FLAGS} -Wformat-overflow=2 -Wformat-truncation=2 -Wduplicated-cond -Wlogical-op")
     endif()
-    # warnings are reported but not fatal until the backlog is cleaned up
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ADLIB_WARN_FLAGS} -Wno-error")
+    # the whole tree builds warning-free with this set: keep it so
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ADLIB_WARN_FLAGS} -Werror")
 endif()
 
 if(ADLIB_BUILD_TESTS)
     enable_testing()
 endif()
 
+# static analysis: cmake --build <dir> --target lint
+add_custom_target(lint
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/lint.sh ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "clang-tidy + cppcheck on lib/lib-jsonrpc-tcp"
+    USES_TERMINAL)
+
 if(${SDSRV_USE_MUSL})
 	add_definitions(-DSDSRV_USE_MUSL_LIB)
 endif()
 add_subdirectory(lib)
-add_subdirectory(services)
+option(ADLIB_BUILD_SERVICES "Build the services (xmproxysrv needs gloox)" ON)
+if(ADLIB_BUILD_SERVICES)
+    add_subdirectory(services)
+endif()
 add_subdirectory(utils)
 if(RUN_AUTO_TEST)
 install(CODE "

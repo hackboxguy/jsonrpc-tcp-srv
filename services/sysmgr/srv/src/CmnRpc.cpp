@@ -16,9 +16,9 @@ CmnRpc::CmnRpc(std::string rpcName, int myIndex, bool emu, bool log,
 /* ------------------------------------------------------------------------- */
 CmnRpc::~CmnRpc() {}
 /* ------------------------------------------------------------------------- */
-int CmnRpc::ProcessWork(JsonDataCommObj *pReq, int index,
+int CmnRpc::ProcessWork(JsonDataCommObj *pReq, int idx,
                         ADJsonRpcMgrProducer *pObj) {
-  EJSON_RPCGMGR_CMD cmd = (EJSON_RPCGMGR_CMD)index;
+  EJSON_RPCGMGR_CMD cmd = (EJSON_RPCGMGR_CMD)idx;
   // cout<<"CmnRpc::ProcessWork:cmd="<<cmd<<endl;
   switch (cmd) {
   // case EJSON_RPCGMGR_GET_TASK_STS            :break;
@@ -47,8 +47,8 @@ int CmnRpc::ProcessWork(JsonDataCommObj *pReq, int index,
   return 0;
 }
 /* ------------------------------------------------------------------------- */
-RPC_SRV_RESULT CmnRpc::ProcessWorkAsync(int index, unsigned char *pWorkData) {
-  EJSON_RPCGMGR_CMD cmd = (EJSON_RPCGMGR_CMD)index;
+RPC_SRV_RESULT CmnRpc::ProcessWorkAsync(int idx, unsigned char *pWorkData) {
+  EJSON_RPCGMGR_CMD cmd = (EJSON_RPCGMGR_CMD)idx;
   // cout<<"CmnRpc::ProcessWorkAsync:cmd="<<cmd<<endl;
   switch (cmd) {
   // case EJSON_RPCGMGR_GET_TASK_STS            :break;//internally handled

@@ -149,49 +149,46 @@ typedef enum ADLIB_SERVICE_READY_STATE_T {
 #define APPDEBUGG(fmt, args...)
 #define MSG(fmt, args...)                                                      \
   printf("%s:%04d:%s:" fmt, APPLICATION_NAME, __LINE__, __FUNCTION__, ##args)
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <syslog.h>
-#define LOG_ERR_MSG(service, msg)                                              \
-  do {                                                                         \
-    openlog(service, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);             \
-    syslog(LOG_ERR, msg);                                                      \
-    closelog();                                                                \
-  } while (0)
+// Logging (finding V2-M10): openlog() changes process-wide state and raced
+// with other threads' log calls when every macro did openlog/syslog/
+// closelog. The log is opened once (program name as ident, LOG_PID,
+// LOG_LOCAL0) and each message carries the service tag instead.
+inline void adlib_syslog(int priority, const char *service, const char *fmt,
+                         ...) {
+  static const bool opened =
+      (openlog(NULL, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0), true);
+  (void)opened;
+  char msg[512];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(msg, sizeof(msg), fmt, ap);
+  va_end(ap);
+  syslog(priority, "%s: %s", service, msg);
+}
+#define LOG_ERR_MSG(service, msg) adlib_syslog(LOG_ERR, service, "%s", msg)
 #define LOG_ERR_MSG_WITH_ARG(service, msg, arg)                                \
-  do {                                                                         \
-    openlog(service, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);             \
-    syslog(LOG_ERR, msg, arg);                                                 \
-    closelog();                                                                \
-  } while (0)
+  adlib_syslog(LOG_ERR, service, msg, arg)
 #define LOG_DEBUG_MSG(logflag, service, msg)                                   \
   do {                                                                         \
-    if (logflag == true) {                                                     \
-      openlog(service, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);           \
-      syslog(LOG_DEBUG, msg);                                                  \
-      closelog();                                                              \
-    }                                                                          \
+    if (logflag == true)                                                       \
+      adlib_syslog(LOG_DEBUG, service, "%s", msg);                             \
   } while (0)
 #define LOG_DEBUG_MSG_1_ARG(logflag, service, msg, arg1)                       \
   do {                                                                         \
-    if (logflag == true) {                                                     \
-      openlog(service, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);           \
-      syslog(LOG_DEBUG, msg, arg1);                                            \
-      closelog();                                                              \
-    }                                                                          \
+    if (logflag == true)                                                       \
+      adlib_syslog(LOG_DEBUG, service, msg, arg1);                             \
   } while (0)
 #define LOG_DEBUG_MSG_2_ARG(logflag, service, msg, arg1, arg2)                 \
   do {                                                                         \
-    if (logflag == true) {                                                     \
-      openlog(service, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);           \
-      syslog(LOG_DEBUG, msg, arg1, arg2);                                      \
-      closelog();                                                              \
-    }                                                                          \
+    if (logflag == true)                                                       \
+      adlib_syslog(LOG_DEBUG, service, msg, arg1, arg2);                       \
   } while (0)
-#define LOG_INFO_MSG(service, msg)                                             \
-  do {                                                                         \
-    openlog(service, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);             \
-    syslog(LOG_ERR, msg);                                                      \
-    closelog();                                                                \
-  } while (0)
+// note: historically logged at LOG_ERR priority; kept
+#define LOG_INFO_MSG(service, msg) adlib_syslog(LOG_ERR, service, "%s", msg)
 #define OBJECT_MEM_CREATE(pMemory, obj)                                        \
   do {                                                                         \
     if (pMemory != NULL) {                                                     \

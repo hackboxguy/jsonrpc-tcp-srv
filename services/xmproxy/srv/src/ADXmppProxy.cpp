@@ -573,8 +573,6 @@ void ADXmppProxy::send_client_alive_ping() {
 int ADXmppProxy::monoshot_callback_function(void *pUserData,
                                             ADThreadProducer *pObj) {
   while (!PingPipe.empty()) {
-    int pingsample = PingPipe.front();
-
     if (j != NULL) {
       j->xmppPing(j->jid(), this); //,this->handleEvent);
       if (++HeartBeat > 3)         // MAX_RESPONSE_TIME_OUT)
@@ -823,15 +821,15 @@ bool ADXmppProxy::SendMessageToBuddy(std::string address,
     string str = (*it).second->jidJID().full(); //*it;
     if (address == str) // send message only if sender is in our Roster()
     {
-      Sessions::iterator it = mySessions.find(address);
-      if (it != mySessions.end()) // check if session already exists in my list
-      {
-        it->second.m_messageEventFilter->raiseMessageEvent(
+      Sessions::iterator sessIt = mySessions.find(address);
+      // check if session already exists in my list
+      if (sessIt != mySessions.end()) {
+        sessIt->second.m_messageEventFilter->raiseMessageEvent(
             MessageEventDisplayed);
-        it->second.m_messageEventFilter->raiseMessageEvent(
+        sessIt->second.m_messageEventFilter->raiseMessageEvent(
             MessageEventComposing);
-        it->second.m_chatStateFilter->setChatState(ChatStateComposing);
-        it->second.m_session->send(body, subject); // gloox::EmptyString );
+        sessIt->second.m_chatStateFilter->setChatState(ChatStateComposing);
+        sessIt->second.m_session->send(body, subject); // gloox::EmptyString );
         if (DebugLog)
           cout << "ADXmppProxy::SendMessageToBuddy:address=" << address
                << " body=" << body << " subject=" << subject << endl;
@@ -964,21 +962,21 @@ bool ADXmppProxy::is_admin_user(std::string user) {
 /* ------------------------------------------------------------------------- */
 int ADXmppProxy::subscribe_buddy(std::string buddy) {
   // StringList groups;
-  JID id(buddy);
-  j->rosterManager()->subscribe(id); //, "", groups, "" );
+  JID buddyJid(buddy);
+  j->rosterManager()->subscribe(buddyJid); //, "", groups, "" );
   return 0;
 }
 /* ------------------------------------------------------------------------- */
 int ADXmppProxy::unsubscribe_buddy(std::string buddy) {
   // StringList groups;
-  JID id(buddy);
-  j->rosterManager()->unsubscribe(id); //, "", groups, "" );
+  JID buddyJid(buddy);
+  j->rosterManager()->unsubscribe(buddyJid); //, "", groups, "" );
   return 0;
 }
 /* ------------------------------------------------------------------------- */
 int ADXmppProxy::get_buddy_online_state(std::string buddy) {
-  JID id(buddy);
-  return j->rosterManager()->getRosterItem(id)->online();
+  JID buddyJid(buddy);
+  return j->rosterManager()->getRosterItem(buddyJid)->online();
   // j->rosterManager()->getRosterItem(id)->subscription();
 }
 /* ------------------------------------------------------------------------- */

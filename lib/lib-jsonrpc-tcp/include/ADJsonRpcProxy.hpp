@@ -119,7 +119,6 @@ class ADJsonRpcProxy : public ADJsonRpcProducer,
                        public ADNetConsumer,
                        public ADChainConsumer,
                        public ADThreadConsumer {
-  char request_timestamp[255];
   int socketlog;
   int total_req_received;
   int total_res_sent;

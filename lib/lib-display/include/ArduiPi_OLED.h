@@ -164,7 +164,7 @@ public:
   void clearDisplay(void);
   void setGrayLevel(uint8_t grayLevel);
   void setBrightness(uint8_t Brightness);
-  void invertDisplay(uint8_t i);
+  void invertDisplay(boolean i);
   void display();
 
   void setSeedTextXY(unsigned char Row, unsigned char Column);

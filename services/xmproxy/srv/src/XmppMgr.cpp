@@ -412,9 +412,9 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       string substr;
       getline(ss, substr, ';');
       // nested alias(allow only two level of alias expansion)
-      Alias::iterator it = AliasList.find(substr);
-      if (it != AliasList.end()) {
-        stringstream sss(it->second);
+      Alias::iterator nestedIt = AliasList.find(substr);
+      if (nestedIt != AliasList.end()) {
+        stringstream sss(nestedIt->second);
         while (sss.good()) {
           string subsubstr;
           getline(sss, subsubstr, ';');
@@ -587,8 +587,8 @@ int XmppMgr::monoshot_callback_function(void *pUserData,
       }
       result.pop_front();
       const char *resTbl[] = STR_RPC_SRV_RESULT_STRING_TABLE;
-      std::string result = resTbl[res];
-      std::string response = "return=" + result + " : " + "result=" + returnval;
+      std::string resStr = resTbl[res];
+      std::string response = "return=" + resStr + " : " + "result=" + returnval;
       XmppProxy.send_reply(response, cmd.sender); // result+":"+returnval);
     }
     processCmd.pop_front(); // after processing delete the entry
@@ -698,7 +698,7 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
 
   // cout<<"loginfilepath: "<<accountFilePath<<endl;
   std::ifstream file(accountFilePath.c_str());
-  std::string line, key;
+  std::string line;
 
   // Parse config file using key-value pairs
   // All fields after user: and pw: are optional
@@ -788,7 +788,6 @@ RPC_SRV_RESULT XmppMgr::Start(std::string accountFilePath) {
 }
 RPC_SRV_RESULT XmppMgr::Stop() {
   // XmppProxy.disconnect();
-  int MaxTime = 0;
   XmppProxy.setForcedDisconnect();
   XmppProxy.disconnect();
   // while(XmppProxy.get_connect_sts()==true && MaxTime++<50) //max 5sec wait
@@ -1324,8 +1323,6 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_fmw_set_default_hostname(std::string msg) {
   // 14:52:09.440-->{ "jsonrpc": "2.0", "method": "set_default_hostname", "id":
   // 0 } 14:52:09.440<--{ "jsonrpc": "2.0", "result": { "return": "Success"},
   // "id": 0 }
-  char temp_str[255];
-  temp_str[0] = '\0';
   ADJsonRpcClient Client;
   if (Client.rpc_server_connect(bboxSmsServerAddr.c_str(), ADCMN_PORT_SYSMGR) !=
       0)
@@ -1973,8 +1970,6 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_sonoff(std::string msg,
     // resolve hostname/ip addr to ip
     if (hostname_to_ip((char *)cmdArg.c_str(), ip) != RPC_SRV_RESULT_SUCCESS)
       return RPC_SRV_RESULT_FAIL;
-    char temp_str[255];
-    temp_str[0] = '\0';
     ADSonOffHttpClient Client;
     if (Client.rpc_server_connect(ip, 80) != 0)
       return RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR;
@@ -2031,8 +2026,6 @@ RPC_SRV_RESULT XmppMgr::hostname_to_ip(char *hostname, char *ip) {
 }
 /* ------------------------------------------------------------------------- */
 RPC_SRV_RESULT XmppMgr::proc_cmd_disp_clear(std::string msg) {
-  char temp_str[255];
-  temp_str[0] = '\0';
   ADJsonRpcClient Client;
   if (Client.rpc_server_connect(bboxSmsServerAddr.c_str(), ADCMN_PORT_SYSMGR) !=
       0)
@@ -2413,7 +2406,7 @@ RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_count(int &count) {
 }
 RPC_SRV_RESULT XmppMgr::proc_cmd_get_inbox_msg(int index,
                                                std::string &message) {
-  if (index < Inbox.size()) {
+  if (index >= 0 && (size_t)index < Inbox.size()) {
     message = Inbox[index];
     return RPC_SRV_RESULT_SUCCESS;
   } else

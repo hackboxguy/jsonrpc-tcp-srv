@@ -1,0 +1,23 @@
+# Static analysis for lib/lib-jsonrpc-tcp (run: cmake --build <dir> --target lint)
+# Checks chosen per review v1 5.2: bugprone, CERT string/return-value rules,
+# clang-analyzer (incl. unix.Malloc and cplusplus.NewDelete), concurrency.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-macro-parentheses,
+  -bugprone-reserved-identifier,
+  -bugprone-implicit-widening-of-multiplication-result,
+  cert-err33-c,
+  cert-str34-c,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-security.insecureAPI.strcpy,
+  -clang-analyzer-optin.performance.Padding,
+  concurrency-mt-unsafe,
+  misc-redundant-expression,
+  misc-unused-using-decls,
+  misc-throw-by-value-catch-by-reference
+WarningsAsErrors: ''
+HeaderFilterRegex: 'lib/lib-jsonrpc-tcp/include/.*'

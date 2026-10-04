@@ -254,7 +254,6 @@ int sm_get_count(const StrMap *map) {
   unsigned int i, j, n, m;
   unsigned int count;
   Bucket *bucket;
-  Pair *pair;
 
   if (map == NULL) {
     return 0;
@@ -264,12 +263,10 @@ int sm_get_count(const StrMap *map) {
   i = 0;
   count = 0;
   while (i < n) {
-    pair = bucket->pairs;
     m = bucket->count;
     j = 0;
     while (j < m) {
       count++;
-      pair++;
       j++;
     }
     bucket++;

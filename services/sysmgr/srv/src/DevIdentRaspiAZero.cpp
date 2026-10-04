@@ -45,6 +45,7 @@ RPC_SRV_RESULT DevIdentRaspiAZero::device_identify() {
     // return 0;
     ;
   }
+  (void)res; // system() exit status is intentionally ignored
   return RPC_SRV_RESULT_SUCCESS; // FEATURE_NOT_AVAILABLE;
 }
 /*****************************************************************************/

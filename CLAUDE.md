@@ -427,8 +427,19 @@ cmake -H. -BOut-asan -DADLIB_BUILD_TESTS=ON -DADLIB_SANITIZE=address
 cmake -H. -BOut-tsan -DADLIB_BUILD_TESTS=ON -DADLIB_SANITIZE=thread
 cmake --build Out-asan -j$(nproc) && ctest --test-dir Out-asan --output-on-failure
 
-# -DADLIB_STRICT_WARNINGS=ON: -Wall -Wextra -Wshadow ...; fatal for lib-jsonrpc-tcp
+# -DADLIB_STRICT_WARNINGS=ON: -Wall -Wextra -Wshadow ... -Werror (whole tree)
+# -DADLIB_HARDENING=ON (default unless cross compiling): _FORTIFY_SOURCE=2,
+#   -fstack-protector-strong
 ```
+
+- Local CI: `scripts/ci.sh [default|asan|tsan|strict|clang|fuzz|lint|musl]`
+  (`musl` runs the lib tests in an Alpine container; `CI_SERVICES=OFF` skips
+  the services, xmproxysrv needs gloox). GitHub Actions: `.github/workflows/ci.yml`.
+- Static analysis: `cmake --build <dir> --target lint` (clang-tidy with
+  `.clang-tidy`, cppcheck; reports in the build dir, non-fatal backlog).
+- Fuzzing (clang): `-DADLIB_FUZZ=ON` builds `fuzz_framer`, `fuzz_client_parse`,
+  `fuzz_request` (full server request path); ctest runs each for 20 s, e.g.
+  `./fuzz_request -dict=<src>/lib/lib-jsonrpc-tcp/tests/fuzz.dict corpus/`.
 
 Tests live in `lib/lib-jsonrpc-tcp/tests/` (dependency-free harness `adtest.hpp`,
 in-process servers on ports below the ephemeral range).

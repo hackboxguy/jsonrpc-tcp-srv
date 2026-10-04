@@ -54,9 +54,9 @@ bool SysRpc::openwrt_system(void) {
   }
 }
 /* ------------------------------------------------------------------------- */
-int SysRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
+int SysRpc::MapJsonToBinary(JsonDataCommObj *pReq, int idx) {
   // printf("SysRpc::MapJsonToBinary called\n");
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_GET_LOADINFO:
     return json_to_bin_get_loadinfo(pReq);
@@ -110,9 +110,9 @@ int SysRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
   return -1; // 0;
 }
 /* ------------------------------------------------------------------------- */
-int SysRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
+int SysRpc::MapBinaryToJson(JsonDataCommObj *pReq, int idx) {
   // printf("SysRpc::MapBinaryToJson called\n");
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_GET_LOADINFO:
     return bin_to_json_get_loadinfo(pReq);
@@ -166,10 +166,10 @@ int SysRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
   return -1;
 }
 /* ------------------------------------------------------------------------- */
-int SysRpc::ProcessWork(JsonDataCommObj *pReq, int index,
+int SysRpc::ProcessWork(JsonDataCommObj *pReq, int idx,
                         ADJsonRpcMgrProducer *pObj) {
   // printf("SysRpc::ProcessWork called\n");
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_GET_LOADINFO:
     return process_get_loadinfo(pReq);
@@ -765,7 +765,7 @@ int SysRpc::process_set_fmwupdate(JsonDataCommObj *pReq,
 RPC_SRV_RESULT
 SysRpc::process_async_set_fmwupdate(SYSMGR_FMWUPDATE_PACKET *pPacket) {
   char cmdline[512];
-  int written;
+  std::string cmd;
   ADSysInfo SysInfo;
   RPC_SRV_RESULT ret_val = RPC_SRV_RESULT_ARG_ERROR;
   switch (pPacket->module) {
@@ -774,13 +774,14 @@ SysRpc::process_async_set_fmwupdate(SYSMGR_FMWUPDATE_PACKET *pPacket) {
                           // result has already been delivered
       // sprintf(cmdline,"sleep 2;%s
       // %s","sysupgrade",pPacket->cmn_fname_ver_str);
-      written = snprintf(cmdline, sizeof(cmdline),
-                         "sleep 2;%s -u %s > /tmp/update.result",
-                         MIPS_UPDATE_TOOL, pPacket->cmn_fname_ver_str);
+      cmd = std::string("sleep 2;") + MIPS_UPDATE_TOOL + " -u " +
+            pPacket->cmn_fname_ver_str + " > /tmp/update.result";
     else
-      written = snprintf(cmdline, sizeof(cmdline), "%s -u %s",
-                         SYSMGR_UPDATE_TOOL, pPacket->cmn_fname_ver_str);
-    if (written < sizeof(cmdline)) {
+      cmd = std::string(SYSMGR_UPDATE_TOOL) + " -u " +
+            pPacket->cmn_fname_ver_str;
+    // commands that do not fit in cmdline[] are rejected (not truncated)
+    if (cmd.size() < sizeof(cmdline)) {
+      strcpy(cmdline, cmd.c_str());
       // backup-fmw will be updated
       ret_val = SysInfo.run_shell_script(cmdline, get_emulation_flag());
       // re-read bkup-fmw-version when fmw-version-rpc is called
@@ -850,24 +851,26 @@ int SysRpc::process_download_file(JsonDataCommObj *pReq,
 RPC_SRV_RESULT
 SysRpc::process_async_download_file(SYSMGR_DOWNLOAD_FILE_PACKET *pPacket,
                                     EJSON_SYSMGR_RPC_TYPES command) {
+  // commands that do not fit in cmdline[] are rejected (not truncated)
   char cmdline[512];
-  int written;
+  std::string cmd;
   ADSysInfo SysInfo;
   RPC_SRV_RESULT ret_val = RPC_SRV_RESULT_ARG_ERROR;
   ADCMN_DEV_INFO *pDevInfo = (ADCMN_DEV_INFO *)pDataCache->pDevInfo;
   switch (command) {
   case EJSON_SYSMGR_RPC_SET_DOWNLOADFTP:
+    // targetfilepath must be fullpath+filename
     if (pDevInfo->BoardType == ADCMN_BOARD_TYPE_GL_MT300NV2)
-      written = snprintf(
-          cmdline, sizeof(cmdline), "wget %s -O %s", pPacket->srcurl,
-          pPacket->targetfilepath); // targetfilepath must be fullpath+filename
+      cmd = std::string("wget ") + pPacket->srcurl + " -O " +
+            pPacket->targetfilepath;
     else
-      written = snprintf(
-          cmdline, sizeof(cmdline), "wget --tries=2 %s -O %s", pPacket->srcurl,
-          pPacket->targetfilepath); // targetfilepath must be fullpath+filename
-    if (written < sizeof(cmdline))
+      cmd = std::string("wget --tries=2 ") + pPacket->srcurl + " -O " +
+            pPacket->targetfilepath;
+    if (cmd.size() < sizeof(cmdline)) {
+      strcpy(cmdline, cmd.c_str());
       ret_val = SysInfo.run_shell_script(
           cmdline, get_emulation_flag()); // backup-fmw will be updated
+    }
     break;
   case EJSON_SYSMGR_RPC_SET_DOWNLOADTFTP:
     // NOTE: becuase of full tftp command, busy-box-tftp command is absolete
@@ -875,12 +878,13 @@ SysRpc::process_async_download_file(SYSMGR_DOWNLOAD_FILE_PACKET *pPacket,
     // %s",pPacket->sourcefilepath,pPacket->targetfilepath,pPacket->srcurl);
 
     // tftp 192.168.1.1 -c get raspi1-disptst.uimg /tmp/update.bin
-    written = snprintf(cmdline, sizeof(cmdline), "tftp %s -c get %s %s",
-                       pPacket->srcurl, pPacket->sourcefilepath,
-                       pPacket->targetfilepath);
-    if (written < sizeof(cmdline))
+    cmd = std::string("tftp ") + pPacket->srcurl + " -c get " +
+          pPacket->sourcefilepath + " " + pPacket->targetfilepath;
+    if (cmd.size() < sizeof(cmdline)) {
+      strcpy(cmdline, cmd.c_str());
       ret_val = SysInfo.run_shell_script(
           cmdline, get_emulation_flag()); // backup-fmw will be updated
+    }
     break;
   default:
     break;
@@ -974,10 +978,10 @@ int SysRpc::process_get_hostname(JsonDataCommObj *pReq) {
     pPanelReq->result = RPC_SRV_RESULT_SUCCESS;
   } else {
     // else just try to read from default hostname file(i.e /etc/hostname)
-    ifstream hostNameFile(DEF_HOST_NAME_FILE_PATH);
-    if (hostNameFile.is_open()) {
-      hostNameFile >> name;
-      hostNameFile.close();
+    ifstream defHostNameFile(DEF_HOST_NAME_FILE_PATH);
+    if (defHostNameFile.is_open()) {
+      defHostNameFile >> name;
+      defHostNameFile.close();
       strcpy(pPacket->hostname, name.c_str());
       pPanelReq->result = RPC_SRV_RESULT_SUCCESS;
     } else
@@ -1037,7 +1041,7 @@ int SysRpc::process_get_myip(JsonDataCommObj *pReq) {
   ADSysInfo SysInfo;
   written =
       snprintf(cmdline, sizeof(cmdline), "wget http://ipinfo.io/ip -qO -");
-  if (written < sizeof(cmdline))
+  if (written >= 0 && (size_t)written < sizeof(cmdline))
     pPanelReq->result =
         SysInfo.run_shell_script(cmdline, pPacket->ip, get_emulation_flag());
   return 0;
@@ -1058,8 +1062,6 @@ int SysRpc::bin_to_json_set_def_hostname(JsonDataCommObj *pReq) {
 int SysRpc::process_set_def_hostname(JsonDataCommObj *pReq) {
   RPC_SRV_REQ *pPanelReq = NULL;
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
-  SYSMGR_HOSTNAME_PACKET *pPacket;
-  pPacket = (SYSMGR_HOSTNAME_PACKET *)pPanelReq->dataRef;
   char cmdline[512];
   ADSysInfo SysInfo;
   sprintf(cmdline, "default-hostname -f y");
@@ -1184,8 +1186,6 @@ int SysRpc::bin_to_json_run_shellcmd(JsonDataCommObj *pReq) {
 int SysRpc::process_run_shellcmd(JsonDataCommObj *pReq,
                                  ADJsonRpcMgrProducer *pObj,
                                  EJSON_SYSMGR_RPC_TYPES cmdtype) {
-  char tmpcmd[1024];
-  int written;
   RPC_SRV_REQ *pPanelReq = NULL;
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
   SYSMGR_SHELLCMD_PACKET *pPacket;
@@ -1199,16 +1199,14 @@ int SysRpc::process_run_shellcmd(JsonDataCommObj *pReq,
     pPanelReq->result = RPC_SRV_RESULT_MEM_ERROR;
     return -1;
   }
-  if (cmdtype == EJSON_SYSMGR_RPC_RUN_SHELLCMDTRIG)
-    written =
-        snprintf(tmpcmd, sizeof(tmpcmd), "%s",
-                 pPacket->cmd); // do not redirect if this is a trigger command
-  else
-    written = snprintf(tmpcmd, sizeof(tmpcmd), "%s > %s", pPacket->cmd,
-                       SHELLCMD_RESP_FILE_PATH); // SHELLCMD_RESP_FILE_PATH
-                                                 // declared in ADCommon.hpp
-  if (written < sizeof(tmpcmd)) {
-    strcpy(pWorkData->cmd, tmpcmd); // pPacket->cmd);
+  // do not redirect if this is a trigger command
+  std::string tmpcmd(pPacket->cmd);
+  if (cmdtype != EJSON_SYSMGR_RPC_RUN_SHELLCMDTRIG) {
+    tmpcmd += " > ";
+    tmpcmd += SHELLCMD_RESP_FILE_PATH; // declared in ADCommon.hpp
+  }
+  if (tmpcmd.size() < sizeof(pWorkData->cmd)) {
+    strcpy(pWorkData->cmd, tmpcmd.c_str()); // pPacket->cmd);
     pPanelReq->result = pObj->PushAsyncTask(
         EJSON_SYSMGR_RPC_RUN_SHELLCMD, (unsigned char *)pWorkData,
         &pPacket->taskID, WORK_CMD_AFTER_DONE_PRESERVE);
@@ -1296,8 +1294,6 @@ int SysRpc::process_subscribe_events(JsonDataCommObj *pReq,
   //	ImgIdentify ImgId;//opencv based class for image processing
   RPC_SRV_REQ *pPanelReq = NULL;
   pPanelReq = (RPC_SRV_REQ *)pReq->pDataObj;
-  SYSMGR_EVNT_SUBSCR_PACKET *pPacket;
-  pPacket = (SYSMGR_EVNT_SUBSCR_PACKET *)pPanelReq->dataRef;
   if (pDataCache->pEventCustom != NULL) {
     EventMonitor *pEvent = (EventMonitor *)pDataCache->pEventCustom;
     pPanelReq->result = pEvent->ReSubscribeEvents();

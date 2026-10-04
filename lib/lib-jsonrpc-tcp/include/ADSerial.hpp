@@ -9,7 +9,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/signal.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <termios.h>

@@ -1,0 +1,41 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [default, asan, tsan, strict, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ clang libjson-c-dev libgloox-dev \
+            libi2c-dev pkg-config
+      - name: build and test
+        run: scripts/ci.sh ${{ matrix.preset }}
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake clang libjson-c-dev libi2c-dev
+      - run: CI_SERVICES=OFF scripts/ci.sh fuzz
+  musl:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci.sh musl
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang clang-tidy cppcheck libjson-c-dev libi2c-dev
+      - run: CI_SERVICES=OFF scripts/ci.sh lint
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: ci-out/lint/*.log

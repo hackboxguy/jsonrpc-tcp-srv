@@ -10,6 +10,21 @@
 using namespace std;
 ADSysInfo::ADSysInfo() {}
 ADSysInfo::~ADSysInfo() {}
+// Reads a whole (small, /proc) file into a NUL terminated malloc'd buffer;
+// NULL if the file cannot be opened. The caller frees it.
+static char *read_whole_file(const char *path) {
+  FILE *f = fopen(path, "rb");
+  if (f == NULL)
+    return NULL;
+  char *arg = NULL;
+  size_t size = 0;
+  while (getdelim(&arg, &size, 0, f) != -1)
+    ;
+  fclose(f);
+  if (arg == NULL)
+    arg = (char *)calloc(1, 1);
+  return arg;
+}
 int ADSysInfo::count_string_occurance(char const *str, char *match_string) {
   char const *p = str;
   int count = 0;
@@ -22,73 +37,58 @@ int ADSysInfo::count_string_occurance(char const *str, char *match_string) {
   return count;
 }
 int ADSysInfo::get_cpu_cores(void) {
-  FILE *cmdline = fopen("/proc/cpuinfo", "rb");
-  char *arg = 0;
-  size_t size = 0;
+  char *arg = read_whole_file("/proc/cpuinfo");
+  if (arg == NULL)
+    return -1;
   int cpu_count = 0;
-  while (getdelim(&arg, &size, 0, cmdline) != -1) {
-    ;
-  }
   cpu_count = count_string_occurance(arg, (char *)"model name");
   free(arg);
-  fclose(cmdline);
   return cpu_count;
 }
 int ADSysInfo::get_current_and_average_load(float *current, float *average) {
-  FILE *cmdline = fopen("/proc/loadavg", "rb");
-  char *arg = 0;
-  size_t size = 0;
-  while (getdelim(&arg, &size, 0, cmdline) != -1) {
-    ;
-  }
+  char *arg = read_whole_file("/proc/loadavg");
+  if (arg == NULL)
+    return -1;
   sscanf(arg, "%f %f", current, average);
   free(arg);
-  fclose(cmdline);
   return 0;
 }
 int ADSysInfo::get_mem_and_free_mem(int *mem_kb, int *mem_free_kb) {
-  FILE *cmdline = fopen("/proc/meminfo", "rb");
-  char *arg = 0;
-  size_t size = 0;
-  char *find_str;
-  while (getdelim(&arg, &size, 0, cmdline) != -1) {
-    ;
-  }
-  find_str = strstr(arg, "MemTotal:");
-  if (find_str == NULL)
+  char *arg = read_whole_file("/proc/meminfo");
+  if (arg == NULL)
     return -1;
+  char *find_str;
+  find_str = strstr(arg, "MemTotal:");
+  if (find_str == NULL) {
+    free(arg);
+    return -1;
+  }
   sscanf(find_str, "MemTotal: %d", mem_kb);
   find_str = strstr(arg, "MemFree:");
-  if (find_str == NULL)
+  if (find_str == NULL) {
+    free(arg);
     return -1;
+  }
   sscanf(find_str, "MemFree: %d", mem_free_kb);
   free(arg);
-  fclose(cmdline);
   return 0;
 }
 int ADSysInfo::get_uptime(int *uptime) {
-  FILE *cmdline = fopen("/proc/uptime", "rb");
-  char *arg = 0;
-  size_t size = 0;
+  char *arg = read_whole_file("/proc/uptime");
+  if (arg == NULL)
+    return -1;
   float tmp_time = 0.0;
-  while (getdelim(&arg, &size, 0, cmdline) != -1) {
-    ;
-  }
   sscanf(arg, "%f", &tmp_time);
   *uptime = (int)tmp_time;
   free(arg);
-  fclose(cmdline);
   return 0;
 }
 int ADSysInfo::get_cpu_model_name(char *model) {
-  FILE *cmdline = fopen("/proc/cpuinfo", "rb");
-  char *arg = 0;
-  size_t size = 0;
+  char *arg = read_whole_file("/proc/cpuinfo");
+  if (arg == NULL)
+    return -1;
   char *find_str;
   char tmp_str[256];
-  while (getdelim(&arg, &size, 0, cmdline) != -1) {
-    ;
-  }
   find_str = strstr(arg, "Processor	:");
   if (find_str != NULL) {
     sscanf(find_str, "Processor	: %s", model);
@@ -96,43 +96,39 @@ int ADSysInfo::get_cpu_model_name(char *model) {
     tmp_str[3] = '\0';
     if (strcmp(tmp_str, "ARM") == 0) {
       free(arg);
-      fclose(cmdline);
       return 0;
     }
   }
   find_str = strstr(arg, "model name	:");
-  if (find_str == NULL)
+  if (find_str == NULL) {
+    free(arg);
     return -1;
+  }
   sscanf(find_str, "model name	: %s", model);
   free(arg);
-  fclose(cmdline);
   return 0;
 }
 int ADSysInfo::get_cpu_frequency(char *freq) {
-  FILE *cmdline = fopen("/proc/cpuinfo", "rb");
-  char *arg = 0;
-  size_t size = 0;
+  char *arg = read_whole_file("/proc/cpuinfo");
+  if (arg == NULL)
+    return -1;
   char *find_str;
-  while (getdelim(&arg, &size, 0, cmdline) != -1) {
-    ;
-  }
   sprintf(freq, "unknown");
   find_str = strstr(arg, "BogoMIPS        :");
   if (find_str != NULL) {
     sscanf(find_str, "BogoMIPS        : %s", freq);
     {
       free(arg);
-      fclose(cmdline);
       return 0;
     }
   }
   find_str = strstr(arg, "cpu MHz      :");
   if (find_str == NULL) {
+    free(arg);
     return -1;
   }
   sscanf(find_str, "cpu MHz      : %s", freq);
   free(arg);
-  fclose(cmdline);
   return 0;
 }
 int ADSysInfo::probe_eth_interface_details(int *total_detected,
@@ -259,7 +255,8 @@ int ADSysInfo::read_network_info_ifconfig(char *eth, char *mac, char *ip,
   return 0;
 }
 int ADSysInfo::read_mem_info(char *mem, char *memfree, char *memused) {
-  int intmem, intmemfree, intcores, intcload, intaload, intutime;
+  int intmem = 0, intmemfree = 0, intcores = 0, intcload = 0, intaload = 0,
+      intutime = 0;
   char cpu_model[512];
   sprintf(mem, "unknown");
   sprintf(memfree, "unknown");
@@ -273,7 +270,8 @@ int ADSysInfo::read_mem_info(char *mem, char *memfree, char *memused) {
   return 0;
 }
 int ADSysInfo::read_load_info(char *curload, char *avgload, char *uptime) {
-  int intmem, intmemfree, intcores, intcload, intaload, intutime;
+  int intmem = 0, intmemfree = 0, intcores = 0, intcload = 0, intaload = 0,
+      intutime = 0;
   char cpu_model[512];
   sprintf(curload, "unknown");
   sprintf(avgload, "unknown");
@@ -287,7 +285,8 @@ int ADSysInfo::read_load_info(char *curload, char *avgload, char *uptime) {
   return 0;
 }
 int ADSysInfo::read_cpu_info(char *cpumodel, char *cores, char *cpufreq) {
-  int intmem, intmemfree, intcores, intcload, intaload, intutime;
+  int intmem = 0, intmemfree = 0, intcores = 0, intcload = 0, intaload = 0,
+      intutime = 0;
   char cpu_model[512];
   sprintf(cpumodel, "unknown");
   sprintf(cores, "unknown");

@@ -582,9 +582,9 @@ void ArduiPi_OLED::setSeedTextXY(unsigned char Row, unsigned char Column) {
 }
 
 void ArduiPi_OLED::putSeedChar(char C) {
-  if (C < 32 || C > 127) // Ignore non-printable ASCII characters. This can be
-                         // modified for multilingual font.
-  {
+  // Ignore non-printable ASCII characters. This can be modified for
+  // multilingual font.
+  if (C < 32 || (unsigned char)C > 127) {
     C = ' '; // Space
   }
 
@@ -593,7 +593,7 @@ void ArduiPi_OLED::putSeedChar(char C) {
       // Character is constructed two pixel at a time using vertical mode from
       // the default 8x8 font
       char c = 0x00;
-      char bit1 = (seedfont[C - 32][i] >> j) & 0x01;
+      char bit1 = (seedfont[C - 32][(unsigned char)i] >> j) & 0x01;
       char bit2 = (seedfont[C - 32][i + 1] >> j) & 0x01;
       // Each bit is changed to a nibble
       c |= (bit1) ? grayH : 0x00;
@@ -616,7 +616,7 @@ void ArduiPi_OLED::setBrightness(uint8_t Brightness) {
   sendCommand(Brightness);
 }
 
-void ArduiPi_OLED::invertDisplay(uint8_t i) {
+void ArduiPi_OLED::invertDisplay(boolean i) {
   if (i)
     sendCommand(SSD_Inverse_Display);
   else
@@ -830,7 +830,7 @@ void ArduiPi_OLED::display(void) {
 
     // I wonder why we have to do this (check datasheet)
     if (oled_height == 32) {
-      for (uint16_t i = 0; i < oled_buff_size; i++) {
+      for (uint16_t k = 0; k < oled_buff_size; k++) {
         fastSPIwrite(0);
       }
     }

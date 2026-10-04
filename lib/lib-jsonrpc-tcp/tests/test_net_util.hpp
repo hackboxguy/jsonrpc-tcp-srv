@@ -186,8 +186,9 @@ inline bool server_alive(int port, int timeout_ms = 3000) {
 struct TestServer {
   ADJsonRpcMgr mgr;
   int port;
-  explicit TestServer(int p) : mgr(1, false, NULL), port(p) {
-    mgr.Start(port, 0, 0);
+  explicit TestServer(int p, int socket_log = 0)
+      : mgr(1, false, NULL), port(p) {
+    mgr.Start(port, socket_log, 0);
     // wait until the listen thread accepts connections
     for (int i = 0; i < 200; i++) {
       int fd = connect_to(port);

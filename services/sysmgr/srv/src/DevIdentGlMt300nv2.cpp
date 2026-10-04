@@ -46,6 +46,7 @@ RPC_SRV_RESULT DevIdentGlMt300nv2::device_identify() {
   if (system(command) != 0) {
     ;
   }
+  (void)res; // system() exit status is intentionally ignored
   return RPC_SRV_RESULT_SUCCESS;
 }
 /* ------------------------------------------------------------------------- */

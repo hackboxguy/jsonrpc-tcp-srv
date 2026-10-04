@@ -53,7 +53,7 @@
 
 #define OLED_LAST_OLED 7 /* always last type, used in code to end array */
 
-static const char *oled_type_str[] = {
+static const char *oled_type_str[] __attribute__((unused)) = {
     "Adafruit SPI 128x32", "Adafruit SPI 128x64", "Adafruit I2C 128x32",
     "Adafruit I2C 128x64", "Seeed I2C 128x64",    "Seeed I2C 96x96",
     "SH1106 I2C 128x64"};

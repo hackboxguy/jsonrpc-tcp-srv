@@ -10,9 +10,9 @@ NetRpc::NetRpc(std::string rpcName, int myIndex, bool emu, bool log,
 /* ------------------------------------------------------------------------- */
 NetRpc::~NetRpc() {}
 /* ------------------------------------------------------------------------- */
-int NetRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
+int NetRpc::MapJsonToBinary(JsonDataCommObj *pReq, int idx) {
   // printf("NetRpc::MapJsonToBinary called\n");
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_GET_MAC_ADDR:
     return json_to_bin_get_mac_addr(pReq);
@@ -36,9 +36,9 @@ int NetRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
   return -1; // 0;
 }
 /* ------------------------------------------------------------------------- */
-int NetRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
+int NetRpc::MapBinaryToJson(JsonDataCommObj *pReq, int idx) {
   // printf("NetRpc::MapBinaryToJson called\n");
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_GET_MAC_ADDR:
     return bin_to_json_get_mac_addr(pReq);
@@ -62,10 +62,10 @@ int NetRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
   return -1;
 }
 /* ------------------------------------------------------------------------- */
-int NetRpc::ProcessWork(JsonDataCommObj *pReq, int index,
+int NetRpc::ProcessWork(JsonDataCommObj *pReq, int idx,
                         ADJsonRpcMgrProducer *pObj) {
   // printf("NetRpc::ProcessWork called\n");
-  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)index;
+  EJSON_SYSMGR_RPC_TYPES command = (EJSON_SYSMGR_RPC_TYPES)idx;
   switch (command) {
   case EJSON_SYSMGR_RPC_GET_MAC_ADDR:
     return process_get_mac_addr(pReq);
@@ -89,7 +89,7 @@ int NetRpc::ProcessWork(JsonDataCommObj *pReq, int index,
   return 0;
 }
 /* ------------------------------------------------------------------------- */
-RPC_SRV_RESULT NetRpc::ProcessWorkAsync(int index, unsigned char *pWorkData) {
+RPC_SRV_RESULT NetRpc::ProcessWorkAsync(int idx, unsigned char *pWorkData) {
   RPC_SRV_RESULT ret_val = RPC_SRV_RESULT_FAIL;
 
   return ret_val;
@@ -122,7 +122,6 @@ int NetRpc::process_get_mac_addr(JsonDataCommObj *pReq) {
   SYSMGR_MAC_ADDR_PACKET *pPacket;
   pPacket = (SYSMGR_MAC_ADDR_PACKET *)pPanelReq->dataRef;
 
-  const char *table[] = SYSMGR_RPC_MAC_ADDR_ARG_IFACE_TABL;
   // if network is connected,then read details from SysInfo
   // if(SysInfo.read_network_info((char*)table[pPacket->eth_type],pPacket->mac_addr,ip,netmask)==0)
   if (SysInfo.read_network_info(pPacket->eth_name, pPacket->mac_addr, ip,
@@ -253,7 +252,6 @@ int NetRpc::process_get_ip_addr(JsonDataCommObj *pReq) {
   SYSMGR_NET_INFO_PACKET *pPacket;
   pPacket = (SYSMGR_NET_INFO_PACKET *)pPanelReq->dataRef;
 
-  const char *table[] = SYSMGR_RPC_MAC_ADDR_ARG_IFACE_TABL;
   // if network is connected,then read details from SysInfo
   // if(SysInfo.read_network_info((char*)table[pPacket->eth_type],mac,pPacket->addr,netmask)==0)
   if (SysInfo.read_network_info(pPacket->eth_name, mac, pPacket->addr,
@@ -321,7 +319,6 @@ int NetRpc::process_get_netmask(JsonDataCommObj *pReq) {
   SYSMGR_NET_INFO_PACKET *pPacket;
   pPacket = (SYSMGR_NET_INFO_PACKET *)pPanelReq->dataRef;
 
-  const char *table[] = SYSMGR_RPC_MAC_ADDR_ARG_IFACE_TABL;
   // if network is connected,then read details from SysInfo
   // if(SysInfo.read_network_info((char*)table[pPacket->eth_type],mac,ip,pPacket->addr)==0)
   if (SysInfo.read_network_info(pPacket->eth_name, mac, ip, pPacket->addr) == 0)

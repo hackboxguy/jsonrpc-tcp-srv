@@ -10,8 +10,8 @@ XmppRpc::XmppRpc(std::string rpcName, int myIndex, bool emu, bool log,
 /* ------------------------------------------------------------------------- */
 XmppRpc::~XmppRpc() {}
 /* ------------------------------------------------------------------------- */
-int XmppRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
-  EJSON_XMPROXY_RPC_TYPES command = (EJSON_XMPROXY_RPC_TYPES)index;
+int XmppRpc::MapJsonToBinary(JsonDataCommObj *pReq, int idx) {
+  EJSON_XMPROXY_RPC_TYPES command = (EJSON_XMPROXY_RPC_TYPES)idx;
   switch (command) {
   case EJSON_XMPROXY_RPC_GET_ASYNCTASK:
     return json_to_bin_get_async_task_in_progress(pReq);
@@ -45,8 +45,8 @@ int XmppRpc::MapJsonToBinary(JsonDataCommObj *pReq, int index) {
   return -1; // 0;
 }
 /* ------------------------------------------------------------------------- */
-int XmppRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
-  EJSON_XMPROXY_RPC_TYPES command = (EJSON_XMPROXY_RPC_TYPES)index;
+int XmppRpc::MapBinaryToJson(JsonDataCommObj *pReq, int idx) {
+  EJSON_XMPROXY_RPC_TYPES command = (EJSON_XMPROXY_RPC_TYPES)idx;
   switch (command) {
   case EJSON_XMPROXY_RPC_GET_ASYNCTASK:
     return bin_to_json_get_async_task_in_progress(pReq);
@@ -81,9 +81,9 @@ int XmppRpc::MapBinaryToJson(JsonDataCommObj *pReq, int index) {
   return -1; // 0;
 }
 /* ------------------------------------------------------------------------- */
-int XmppRpc::ProcessWork(JsonDataCommObj *pReq, int index,
+int XmppRpc::ProcessWork(JsonDataCommObj *pReq, int idx,
                          ADJsonRpcMgrProducer *pObj) {
-  EJSON_XMPROXY_RPC_TYPES command = (EJSON_XMPROXY_RPC_TYPES)index;
+  EJSON_XMPROXY_RPC_TYPES command = (EJSON_XMPROXY_RPC_TYPES)idx;
   switch (command) {
   case EJSON_XMPROXY_RPC_GET_ASYNCTASK:
     return process_get_async_task_in_progress(pReq);

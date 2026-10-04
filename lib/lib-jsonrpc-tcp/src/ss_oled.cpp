@@ -1779,7 +1779,7 @@ int oledScaledString(SSOLED *pOLED, int x, int y, char *szMsg, int iSize,
       row = 0;
       uc = ucTemp[col >> 8];
       for (ty = 0; ty < (int)dy; ty++) {
-        int nx, ny;
+        int nx = -1, ny = -1; // an unknown rotation draws nothing
         bit = row >> 8;
         color = (uc & (1 << bit));
         switch (iRotation) {

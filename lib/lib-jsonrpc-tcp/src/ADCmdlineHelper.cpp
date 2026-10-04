@@ -928,8 +928,8 @@ int ADCmdlineHelper::wait_for_client_workers_to_finish() {
              (SrvRespTimeout++ < MAX_SRV_RESPONSE_TIMEOUT)) {
         usleep(5000);
       }
+      pWorker->print_command_result();
     }
-    pWorker->print_command_result();
   }
   return 0;
 }

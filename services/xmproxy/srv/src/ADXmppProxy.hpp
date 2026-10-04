@@ -129,6 +129,11 @@ public:
                          const std::string &message);
 
   // roster related overrider
+  // NOTE: current gloox declares onResourceBindError/onSessionCreateError
+  // with 'const Error *'; these enum overloads are never called. The using
+  // declarations keep the base versions visible (behaviour unchanged).
+  using ConnectionListener::onResourceBindError;
+  using ConnectionListener::onSessionCreateError;
   virtual void onResourceBindError(ResourceBindError error);
   virtual void onSessionCreateError(SessionCreateError error);
   virtual void handleItemSubscribed(const JID &jid);

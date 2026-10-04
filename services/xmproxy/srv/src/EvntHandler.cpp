@@ -87,7 +87,7 @@ void EvntHandler::ReceiveEvent(int cltToken, int evntNum, int evntArg,
                             cltToken);
         return; // RPC_SRV_RESULT_HOST_NOT_REACHABLE_ERR;
       }
-      RPC_SRV_RESULT result = Client.get_string_type_with_string_para(
+      Client.get_string_type_with_string_para(
           (char *)ADLIB_RPC_NAME_GET_TASK_STATUS,
           (char *)ADLIB_RPC_PARM_TASK_STS_ID, taskIDString, taskIDResult,
           (char *)ADLIB_RPC_PARM_TASK_STS);
