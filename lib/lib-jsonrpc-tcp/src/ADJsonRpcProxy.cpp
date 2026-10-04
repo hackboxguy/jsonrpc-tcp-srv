@@ -237,8 +237,9 @@ int ADJsonRpcProxy::get_jsonrpc_id(struct json_object *new_obj, int *req_id) {
   *req_id = json_object_get_int(new_obj);
   return 0;
 }
-int ADJsonRpcProxy::json_send_error_response_string(
-    int id, int sock_descriptor, JSON_RPC_ERR_TYPE err_type) {
+int ADJsonRpcProxy::json_send_error_response_string(int id, int sock_descriptor,
+                                                    JSON_RPC_ERR_TYPE err_type,
+                                                    int cltid) {
   json_object *intrnl_obj;
   json_object *error_obj;
   intrnl_obj = json_object_new_object();
@@ -279,7 +280,7 @@ int ADJsonRpcProxy::json_send_error_response_string(
     json_object_object_add(intrnl_obj, "id", NULL);
     break;
   }
-  send_json_object(sock_descriptor, intrnl_obj);
+  send_json_object(sock_descriptor, cltid, intrnl_obj);
   // error_obj is owned by intrnl_obj (json_object_object_add), so only the
   // outer object is released here
   json_object_put(intrnl_obj);
@@ -307,27 +308,29 @@ int ADJsonRpcProxy::json_send_result_response_string(int id,
     json_object_object_add(intrnl_obj, "result", tmp_obj);
   }
   json_object_object_add(intrnl_obj, "id", json_object_new_int(id));
-  send_json_object(sock_descriptor, intrnl_obj);
+  send_json_object(sock_descriptor, task_obj->pNetData->cltid, intrnl_obj);
   // tmp_obj and result_obj are owned by intrnl_obj
   json_object_put(intrnl_obj);
   return 0;
 }
-int ADJsonRpcProxy::send_json_object(int sock_descriptor, json_object *obj) {
+int ADJsonRpcProxy::send_json_object(int sock_descriptor, int cltid,
+                                     json_object *obj) {
   size_t len = 0;
   const char *message =
       json_object_to_json_string_length(obj, JSON_C_TO_STRING_SPACED, &len);
   if (message == NULL)
     return -1;
-  ServerSocket.schedule_response(sock_descriptor, (char *)message, (int)len);
+  ServerSocket.schedule_response(sock_descriptor, cltid, (char *)message,
+                                 (int)len);
   if (socketlog)
     printf("%s<--%s\n", get_timestamp(), message);
   return 0;
 }
 int ADJsonRpcProxy::json_single_string_response_sender(api_task_obj *resp_obj) {
   if (resp_obj->task_result != CMD_TASK_RESULT_SUCCESS)
-    json_send_error_response_string(resp_obj->req_id,
-                                    resp_obj->pNetData->sock_descriptor,
-                                    JSON_RPC_ERR_INTERNAL_ERROR);
+    json_send_error_response_string(
+        resp_obj->req_id, resp_obj->pNetData->sock_descriptor,
+        JSON_RPC_ERR_INTERNAL_ERROR, resp_obj->pNetData->cltid);
   if (resp_obj->json_resp_string_len > 0)
     json_send_result_response_string(resp_obj->req_id,
                                      resp_obj->pNetData->sock_descriptor,
@@ -359,14 +362,14 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
   char *json_string = req_obj->data_buffer;
   if (json_string[0] == '[') {
     json_send_error_response_string(0, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_INVALID_REQ);
+                                    JSON_RPC_ERR_INVALID_REQ, req_obj->cltid);
     return -1;
   }
   if (json_checker_function(json_string) != 0) {
     if (socketlog)
       printf("%s-->%s\n", get_timestamp(), json_string);
     json_send_error_response_string(0, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_PARSE_ERROR);
+                                    JSON_RPC_ERR_PARSE_ERROR, req_obj->cltid);
     return -1;
   }
   new_obj = json_tokener_parse(json_string);
@@ -374,7 +377,7 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
     if (socketlog)
       printf("%s-->%s\n", get_timestamp(), json_string);
     json_send_error_response_string(0, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_PARSE_ERROR);
+                                    JSON_RPC_ERR_PARSE_ERROR, req_obj->cltid);
     return -1;
   }
   if (check_jsonrpc_2_0(new_obj) == 0)
@@ -385,7 +388,7 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
     if (socketlog)
       printf("%s-->%s\n", get_timestamp(), json_string);
     json_send_error_response_string(0, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_INVALID_REQ);
+                                    JSON_RPC_ERR_INVALID_REQ, req_obj->cltid);
     json_object_put(new_obj);
     return -1;
   }
@@ -394,7 +397,8 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
     if (socketlog)
       printf("%s-->%s\n", get_timestamp(), json_string);
     json_send_error_response_string(json_req_id, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_METHOD_NOT_FOUND);
+                                    JSON_RPC_ERR_METHOD_NOT_FOUND,
+                                    req_obj->cltid);
     json_object_put(new_obj);
     return -1;
   }
@@ -403,7 +407,8 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
   OBJECT_MEM_NEW(pTaskObj, api_task_obj);
   if (pTaskObj == NULL) {
     json_send_error_response_string(json_req_id, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_INTERNAL_ERROR);
+                                    JSON_RPC_ERR_INTERNAL_ERROR,
+                                    req_obj->cltid);
     json_object_put(new_obj);
     return -1;
   }
@@ -422,7 +427,8 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
   if (ReqRespChain.chain_put((void *)pTaskObj) != 0) {
     printf("failed! unable to push json-req-task-obj to chain!\n");
     json_send_error_response_string(json_req_id, req_obj->sock_descriptor,
-                                    JSON_RPC_ERR_INTERNAL_ERROR);
+                                    JSON_RPC_ERR_INTERNAL_ERROR,
+                                    req_obj->cltid);
     json_object_put(new_obj);
     OBJ_MEM_DELETE(pTaskObj);
     return -1;

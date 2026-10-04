@@ -2,8 +2,14 @@
 #ifndef __ADNETCLIENT_H_
 #define __ADNETCLIENT_H_
 
+#include "ADJsonStreamFramer.hpp"
 #include <ctime>
 #include <string>
+// default bound for connect(); a blocking connect() can otherwise take
+// about two minutes (SYN retries) against a dead peer
+#define AD_NET_CLIENT_CONNECT_TIMEOUT_MS 3000
+// bound for a single blocking send()
+#define AD_NET_CLIENT_SEND_TIMEOUT_MS 5000
 
 class Timer {
 public:
@@ -27,6 +33,9 @@ private:
   int port;
   bool connected;
   int sockfd;
+  int connect_timeout_ms;
+  ADJsonStreamFramer rx_framer; // assembles responses split across segments
+  int wait_readable(int timeout_ms);
 
 public:
   ADNetClient();
@@ -45,7 +54,15 @@ public:
   int send_data(char *buffer); // Original version for compatibility
   int send_data(const char *buffer, size_t length); // New safer version
   int receive_data(char *buffer, int buf_total_size);
+  // waits up to timeout_ms for data and returns what one recv() delivered;
+  // -1 on timeout, error or peer close (recv_buf is then an empty string)
   int receive_data_blocking(char *recv_buf, int buf_total_size, int timeout_ms);
+  // waits up to timeout_ms for one complete JSON object/array (it may arrive
+  // in several segments) and copies it NUL terminated into recv_buf
+  // (truncated if larger). Returns its length, or -1 on timeout, error, peer
+  // close or a framing error.
+  int receive_json_blocking(char *recv_buf, int buf_total_size, int timeout_ms);
+  void set_connect_timeout(int timeout_ms) { connect_timeout_ms = timeout_ms; }
 
   // Status and information
   int test_print();

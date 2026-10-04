@@ -2,10 +2,12 @@
 #define __ADNETSERVER_H_
 #include "ADCommon.hpp"
 #include "ADGenericChain.hpp"
+#include "ADJsonStreamFramer.hpp"
 #include "ADThread.hpp"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <map>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <semaphore.h>
@@ -22,6 +24,10 @@
 #include <unistd.h>
 #define AD_NET_SERVER_DEFAULT_LISTEN_PORT 65001
 #define AD_NET_SERVER_MAX_BUFFER_SIZE 0xffff
+// upper bound for one JSON request; larger requests close the connection
+#define AD_NET_SERVER_MAX_JSON_MSG_SIZE (256 * 1024)
+// how long the response thread waits for a slow reader per response
+#define AD_NET_SERVER_SEND_TIMEOUT_MS 2000
 typedef enum ADLIB_TCP_SOCKET_TYPE_T {
   ADLIB_TCP_SOCKET_TYPE_BINARY,
   ADLIB_TCP_SOCKET_TYPE_JSON,
@@ -95,8 +101,8 @@ class ADNetServer : public ADNetProducer,
   fd_set master_set;
   char receive_buffer[AD_NET_SERVER_MAX_BUFFER_SIZE];
   int receive_size;
-  char receive_buffer_pending[AD_NET_SERVER_MAX_BUFFER_SIZE];
-  int receive_size_pending;
+  // one stream framer per JSON connection; only used by the listen thread
+  std::map<int, ADJsonStreamFramer *> framers;
   int id_listen_thread;
   int id_response_thread;
   ADThread listen_thread;
@@ -122,7 +128,10 @@ class ADNetServer : public ADNetProducer,
                                               int len);
   int json_receive_data_and_notify_consumer(int socket_descriptor, char *buf,
                                             int len);
-  int segmented_json_object(int socket_descriptor, char *buf, int *len);
+  void send_protocol_error(int socket_descriptor);
+  void close_connection(int socket_descriptor);
+  int dup_if_same_client(int socket_descriptor, int cltid);
+  int send_with_deadline(int socket_descriptor, const char *buf, int len);
   int start_listening();
   int stop_listening();
   bool IsConnectionAlive(int sock_descriptor);
@@ -132,6 +141,10 @@ public:
   ADNetServer(int port);
   ~ADNetServer();
   int schedule_response(int socket_descriptor, char *buf, int len);
+  // cltid identifies the connection (net_data_obj::cltid of the request);
+  // the response is dropped if that connection was closed meanwhile, even
+  // when the fd number was already reused by a new client. -1 skips the check
+  int schedule_response(int socket_descriptor, int cltid, char *buf, int len);
   int start_listening(
       int port, int socket_log,
       ADLIB_TCP_SOCKET_TYPE socket_type = ADLIB_TCP_SOCKET_TYPE_JSON);

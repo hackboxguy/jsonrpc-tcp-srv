@@ -131,7 +131,7 @@ class ADJsonRpcProxy : public ADJsonRpcProducer,
   virtual int thread_callback_function(void *pUserData, ADThreadProducer *pObj);
   char *get_timestamp();
   int json_checker_function(char *string);
-  int send_json_object(int sock_descriptor, json_object *obj);
+  int send_json_object(int sock_descriptor, int cltid, json_object *obj);
   void print_json_value(json_object *jobj, json_type type);
   void json_parse(json_object *obj);
   void json_parse_array(json_object *jobj, char *key);
@@ -140,7 +140,8 @@ class ADJsonRpcProxy : public ADJsonRpcProducer,
   CMD_TASK_ACC get_jsonrpc_acc(struct json_object *new_obj);
   int get_jsonrpc_id(struct json_object *new_obj, int *req_id);
   int json_send_error_response_string(int id, int sock_descriptor,
-                                      JSON_RPC_ERR_TYPE err_type);
+                                      JSON_RPC_ERR_TYPE err_type,
+                                      int cltid = -1);
   int json_send_result_response_string(int id, int sock_descriptor,
                                        char *result, api_task_obj *task_obj);
   int json_single_string_response_sender(api_task_obj *resp_obj);

@@ -1,6 +1,7 @@
 #include "ADNetServer.hpp"
 #include "ADCommon.hpp"
 #include <iostream>
+#include <poll.h>
 using namespace std;
 #define AD_NETWORK_TRUE 1
 #define AD_NETWORK_FALSE 0
@@ -31,6 +32,57 @@ int ADNetServer::free_chain_element_data(void *element, ADChainProducer *pObj) {
     ARRAY_MEM_DELETE(obj->data_buffer);
   return 0;
 }
+// Returns a private dup() of the client socket if sock_descriptor still
+// belongs to the connection identified by cltid, else -1. The check and the
+// dup() happen under the client-info lock, and the listen thread deregisters
+// a connection before it closes the fd, so the dup always refers to the
+// original connection even if the fd number gets reused afterwards.
+int ADNetServer::dup_if_same_client(int sock_descriptor, int cltid) {
+  int fd = -1;
+  if (cltid < 0) {
+    if (IsConnectionAlive(sock_descriptor))
+      fd = dup(sock_descriptor);
+    return fd;
+  }
+  clientInfo_chain.chain_lock();
+  net_data_obj *info =
+      (net_data_obj *)clientInfo_chain.chain_get_by_ident(sock_descriptor);
+  if (info != NULL && info->ident == cltid)
+    fd = dup(sock_descriptor);
+  clientInfo_chain.chain_unlock();
+  return fd;
+}
+// sends the whole buffer; handles partial writes, EINTR and EAGAIN until
+// AD_NET_SERVER_SEND_TIMEOUT_MS expired
+int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
+  int sent = 0;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  long deadline =
+      ts.tv_sec * 1000L + ts.tv_nsec / 1000000L + AD_NET_SERVER_SEND_TIMEOUT_MS;
+  while (sent < len) {
+    ssize_t rc = send(fd, buf + sent, len - sent, MSG_DONTWAIT | MSG_NOSIGNAL);
+    if (rc > 0) {
+      sent += rc;
+      continue;
+    }
+    if (rc < 0 && errno == EINTR)
+      continue;
+    if (rc < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+      return -1;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long left = deadline - (ts.tv_sec * 1000L + ts.tv_nsec / 1000000L);
+    if (left <= 0)
+      return -1;
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLOUT;
+    pfd.revents = 0;
+    if (poll(&pfd, 1, (int)left) < 0 && errno != EINTR)
+      return -1;
+  }
+  return 0;
+}
 bool ADNetServer::IsConnectionAlive(int sock_descriptor) {
   socklen_t len;
   struct sockaddr_storage addr;
@@ -46,11 +98,17 @@ int ADNetServer::monoshot_callback_function(void *pUserData,
   int call_from = pObj->getID();
   if (call_from == id_response_thread) {
     net_data_obj *resp_obj;
-    resp_obj = (net_data_obj *)response_chain.chain_get();
-    if (resp_obj != NULL) {
-      if (IsConnectionAlive(resp_obj->sock_descriptor))
-        send(resp_obj->sock_descriptor, resp_obj->data_buffer,
-             resp_obj->data_buffer_len, MSG_DONTWAIT | MSG_NOSIGNAL);
+    // drain everything queued; wakeups may be coalesced
+    while ((resp_obj = (net_data_obj *)response_chain.chain_get()) != NULL) {
+      int fd = dup_if_same_client(resp_obj->sock_descriptor, resp_obj->cltid);
+      if (fd >= 0) {
+        if (send_with_deadline(fd, resp_obj->data_buffer,
+                               resp_obj->data_buffer_len) != 0 &&
+            socketlog)
+          printf("[%06d]response dropped (send failed or timed out)\n",
+                 resp_obj->sock_descriptor);
+        close(fd);
+      }
       ARRAY_MEM_DELETE(resp_obj->data_buffer);
       OBJ_MEM_DELETE(resp_obj);
     }
@@ -118,6 +176,11 @@ int ADNetServer::thread_callback_function(void *pUserData,
               continue;
             }
             print_client_info(&in_addr, in_len, new_sd);
+            if (sock_type == ADLIB_TCP_SOCKET_TYPE_JSON) {
+              delete framers[new_sd]; // stale entry, must not happen
+              framers[new_sd] =
+                  new ADJsonStreamFramer(AD_NET_SERVER_MAX_JSON_MSG_SIZE);
+            }
             FD_SET(new_sd, &master_set);
             if (new_sd > max_sd)
               max_sd = new_sd;
@@ -146,18 +209,22 @@ int ADNetServer::thread_callback_function(void *pUserData,
             receive_buffer[receive_size] = '\0';
             switch (sock_type) {
             case ADLIB_TCP_SOCKET_TYPE_JSON:
-              json_receive_data_and_notify_consumer(i, receive_buffer,
-                                                    receive_size);
+              if (json_receive_data_and_notify_consumer(i, receive_buffer,
+                                                        receive_size) < 0) {
+                // the stream cannot be resynchronized: tell the client
+                // and drop the connection
+                send_protocol_error(i);
+                close_conn = AD_NETWORK_TRUE;
+              }
               break;
             default:
               binary_receive_data_and_notify_consumer(i, receive_buffer,
                                                       receive_size);
               break;
             }
-          } while (AD_NETWORK_TRUE);
+          } while (close_conn == AD_NETWORK_FALSE);
           if (close_conn) {
-            deregister_client_info(i);
-            close(i);
+            close_connection(i);
             FD_CLR(i, &master_set);
             if (i == max_sd) {
               while (max_sd > listen_sd &&
@@ -176,7 +243,6 @@ void Ouch(int num) {
   LOG_ERR_MSG("ADNetServer:AdLib", "Ouch!!! received SIGALRM");
 }
 ADNetServer::ADNetServer() {
-  receive_size_pending = 0;
   socketlog = 0;
   connected = 0;
   listen_port = AD_NET_SERVER_DEFAULT_LISTEN_PORT;
@@ -186,7 +252,6 @@ ADNetServer::ADNetServer() {
   signal(SIGALRM, Ouch);
 }
 ADNetServer::ADNetServer(int port) {
-  receive_size_pending = 0;
   socketlog = 0;
   connected = 0;
   listen_port = port;
@@ -259,8 +324,12 @@ int ADNetServer::stop_listening() {
   response_chain.remove_all();
   clientInfo_chain.remove_all();
   for (int i = 0; i <= max_sd; ++i) {
-    if (FD_ISSET(i, &master_set))
-      close(i);
+    if (FD_ISSET(i, &master_set)) {
+      if (i == listen_sd)
+        close(i);
+      else
+        close_connection(i);
+    }
   }
   connected = 0;
   return 0;
@@ -294,6 +363,8 @@ int ADNetServer::print_client_info(struct sockaddr *in_addr, socklen_t in_len,
   } else {
     if (socketlog)
       printf("getnameinfo returned = %d\n", in_clt_info);
+    // still register: the record identifies the connection (cltid)
+    register_client_info(sock_descr, -1, (char *)"");
   }
   return 0;
 }
@@ -338,11 +409,16 @@ int ADNetServer::get_client_info(int sock_descr, char *cltip, int *cltport,
   return ret;
 }
 int ADNetServer::schedule_response(int socket_descriptor, char *buf, int len) {
+  return schedule_response(socket_descriptor, -1, buf, len);
+}
+int ADNetServer::schedule_response(int socket_descriptor, int cltid, char *buf,
+                                   int len) {
   net_data_obj *resp_obj = NULL;
   OBJECT_MEM_NEW(resp_obj, net_data_obj);
   if (resp_obj == NULL)
     return -1;
   resp_obj->ident = 0;
+  resp_obj->cltid = cltid;
   resp_obj->sock_descriptor = socket_descriptor;
   resp_obj->data_buffer_len = len;
   resp_obj->data_buffer = NULL;
@@ -395,90 +471,74 @@ int ADNetServer::binary_receive_data_and_notify_consumer(int socket_descriptor,
   notify_data_arrival(&request_chain);
   return 0;
 }
+// Feeds the bytes into the connection's framer and queues every complete
+// request. Returns -1 on a framing error (garbage between messages or a
+// request above AD_NET_SERVER_MAX_JSON_MSG_SIZE).
 int ADNetServer::json_receive_data_and_notify_consumer(int socket_descriptor,
                                                        char *buf, int len) {
-  int last_index = 0;
-  char *pTemp = buf;
   char cltip[512];
   int cltport = -1;
   int cltid = -1;
+  std::map<int, ADJsonStreamFramer *>::iterator it =
+      framers.find(socket_descriptor);
+  if (it == framers.end())
+    return -1;
+  int frc = it->second->feed(buf, len);
+  if (it->second->available() == 0)
+    return frc < 0 ? -1 : 0;
   if (get_client_info(socket_descriptor, cltip, &cltport, &cltid) != 0)
     cltip[0] = '\0';
-  for (int i = 0; i < len; i++) {
-    if (buf[i] == '}' && buf[i + 1] == '{') {
-      net_data_obj *resp_obj = NULL;
-      OBJECT_MEM_NEW(resp_obj, net_data_obj);
-      if (resp_obj == NULL) {
-        return -1;
-      }
-      resp_obj->ident = request_chain.chain_generate_ident();
-      resp_obj->sock_descriptor = socket_descriptor;
-      resp_obj->port = cltport;
-      strcpy(resp_obj->ip, cltip);
-      resp_obj->cltid = cltid;
-      resp_obj->data_buffer_len = i - last_index + 1;
-      ARRAY_MEM_NEW(resp_obj->data_buffer, (i - last_index + 3));
-      if (resp_obj->data_buffer == NULL) {
-        OBJ_MEM_DELETE(resp_obj);
-        return -1;
-      }
-      strncpy(resp_obj->data_buffer, pTemp, i - last_index + 1);
-      resp_obj->data_buffer[i - last_index + 1] = '\0';
-      pTemp = &buf[i + 1];
-      if (request_chain.chain_put((void *)resp_obj) != 0) {
-        printf("failed! unable to push response object to chain!\n");
-        ARRAY_MEM_DELETE(resp_obj->data_buffer);
-        OBJ_MEM_DELETE(resp_obj);
-        return -1;
-      }
-      last_index = i + 1;
+  std::string msg;
+  int queued = 0;
+  while (it->second->next(msg)) {
+    net_data_obj *resp_obj = NULL;
+    OBJECT_MEM_NEW(resp_obj, net_data_obj);
+    if (resp_obj == NULL)
+      break;
+    resp_obj->ident = request_chain.chain_generate_ident();
+    resp_obj->sock_descriptor = socket_descriptor;
+    resp_obj->port = cltport;
+    strcpy(resp_obj->ip, cltip);
+    resp_obj->cltid = cltid;
+    resp_obj->data_buffer_len = msg.size();
+    ARRAY_MEM_NEW(resp_obj->data_buffer, msg.size() + 1);
+    if (resp_obj->data_buffer == NULL) {
+      OBJ_MEM_DELETE(resp_obj);
+      break;
     }
+    memcpy(resp_obj->data_buffer, msg.data(), msg.size());
+    resp_obj->data_buffer[msg.size()] = '\0';
+    if (request_chain.chain_put((void *)resp_obj) != 0) {
+      printf("failed! unable to push request object to chain!\n");
+      ARRAY_MEM_DELETE(resp_obj->data_buffer);
+      OBJ_MEM_DELETE(resp_obj);
+      break;
+    }
+    queued++;
   }
-  net_data_obj *resp_obj = NULL;
-  OBJECT_MEM_NEW(resp_obj, net_data_obj);
-  if (resp_obj == NULL) {
-    return -1;
-  }
-  resp_obj->ident = request_chain.chain_generate_ident();
-  resp_obj->sock_descriptor = socket_descriptor;
-  resp_obj->port = cltport;
-  strcpy(resp_obj->ip, cltip);
-  resp_obj->cltid = cltid;
-  resp_obj->data_buffer_len = len - last_index;
-  ARRAY_MEM_NEW(resp_obj->data_buffer, (len - last_index) + 2);
-  if (resp_obj->data_buffer == NULL) {
-    OBJ_MEM_DELETE(resp_obj);
-    return -1;
-  }
-  strncpy(resp_obj->data_buffer, pTemp, (len - last_index) + 1);
-  if (request_chain.chain_put((void *)resp_obj) != 0) {
-    printf("failed! unable to push response object to chain!\n");
-    ARRAY_MEM_DELETE(resp_obj->data_buffer);
-    OBJ_MEM_DELETE(resp_obj);
-    return -1;
-  }
-  notify_data_arrival(&request_chain);
-  return 0;
+  // requests of one connection reach the consumer in arrival order: one
+  // listen thread pushes them to one FIFO chain
+  if (queued > 0)
+    notify_data_arrival(&request_chain);
+  return frc < 0 ? -1 : 0;
 }
-int ADNetServer::segmented_json_object(int socket_descriptor, char *buf,
-                                       int *len) {
-  char *pendingPtr = &receive_buffer_pending[receive_size_pending];
-  strcpy(pendingPtr, buf);
-  int curly_brace_open = 0;
-  int curly_brace_close = 0;
-  for (int i = 0; i < (*len + receive_size_pending); i++) {
-    if (receive_buffer_pending[i] == '{')
-      curly_brace_open++;
-    else if (receive_buffer_pending[i] == '}')
-      curly_brace_close++;
+void ADNetServer::send_protocol_error(int socket_descriptor) {
+  static const char err[] = "{ \"jsonrpc\": \"2.0\", \"error\": { \"code\": "
+                            "-32700, \"message\": \"Parse error.\" }, "
+                            "\"id\": null }";
+  if (socketlog)
+    printf("[%06d]framing error, closing connection\n", socket_descriptor);
+  send(socket_descriptor, err, sizeof(err) - 1, MSG_DONTWAIT | MSG_NOSIGNAL);
+}
+// every close path goes through here: the client record and the framer of
+// this fd must not survive, the fd number can be reused by the next accept
+void ADNetServer::close_connection(int socket_descriptor) {
+  deregister_client_info(socket_descriptor);
+  std::map<int, ADJsonStreamFramer *>::iterator it =
+      framers.find(socket_descriptor);
+  if (it != framers.end()) {
+    delete it->second;
+    framers.erase(it);
   }
-  if (curly_brace_open != curly_brace_close) {
-    receive_size_pending = *len;
-    return 1;
-  } else {
-    strcpy(buf, receive_buffer_pending);
-    *len += receive_size_pending;
-    receive_size_pending = 0;
-  }
-  return 0;
+  close(socket_descriptor);
 }

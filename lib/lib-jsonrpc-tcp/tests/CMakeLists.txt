@@ -10,4 +10,6 @@ function(adlib_add_test name)
 endfunction()
 
 adlib_add_test(test_generic_chain)
+adlib_add_test(test_json_framer)
 adlib_add_test(test_rpc_negative)
+adlib_add_test(test_rpc_stream)

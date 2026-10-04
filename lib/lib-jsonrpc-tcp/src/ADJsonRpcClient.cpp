@@ -1841,7 +1841,7 @@ int ADJsonRpcClient::find_json_result_and_three_string_param(
 char *ADJsonRpcClient::send_raw_data_and_receive_resp(char *tx_buffer) {
   recv_buffer[0] = '\0';
   ClientSocket.send_data(tx_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   recv_buffer[MAX_RECV_BUFFER_SIZE - 1] = '\0';
   return recv_buffer;
 }
@@ -1852,7 +1852,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_integer_type(char *method_name,
   prepare_json_request(method_name, req_id++, send_buffer, method_param_name,
                        method_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -1865,7 +1865,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_integer_type(char *method_name,
   prepare_json_request(method_name, req_id++, send_buffer, method_param_name,
                        method_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -1877,7 +1877,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_integer_type(char *method_name,
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(param_value, "NotFound");
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
@@ -1892,7 +1892,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_integer_type_with_addr_para(
   prepare_json_request(method_name, req_id++, addr_para_name, addr_para_value,
                        method_param_name, method_param_value, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -1905,7 +1905,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_integer_type_with_addr_para(
   prepare_json_request(method_name, req_id++, addr_para_name, addr_para_value,
                        send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(result_string, "unknown");
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, return_string,
@@ -1921,7 +1921,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_three_int_type(char *method_name,
   prepare_json_request(method_name, req_id++, int1Nm, int1Vl, int2Nm, int2Vl,
                        int3Nm, int3Vl, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -1934,7 +1934,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_three_int_get_one_int(
   prepare_json_request(method_name, req_id++, int1Nm, int1Vl, int2Nm, int2Vl,
                        int3Nm, int3Vl, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, int4Nm,
           int4Vl) != 0)
@@ -1948,7 +1948,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_enum_type_with_addr_para(
   prepare_json_request(method_name, req_id++, addr_para_name, addr_para_value,
                        method_param_name, method_param_value, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -1961,7 +1961,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_enum_type_with_addr_para(
   prepare_json_request(method_name, req_id++, addr_para_name, addr_para_value,
                        send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(result_string, "unknown");
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, return_string,
@@ -1976,7 +1976,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_string_type_with_string_para(
   prepare_json_request(method_name, req_id++, send_buffer, str_para_name,
                        str_para_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(result_string, "unknown");
   if (res_para_name != NULL) {
     if (find_json_result_and_single_string_param(
@@ -1998,7 +1998,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_int_type_with_string_para(
   prepare_json_request(method_name, req_id++, send_buffer, str_para_name,
                        str_para_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(result_string, "unknown");
   if (res_para_name != NULL) {
     if (find_json_result_and_single_string_param(
@@ -2021,7 +2021,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_string_type_with_string_para_with_addr_para(
   prepare_json_request(method_name, req_id++, send_buffer, addr_para_name,
                        addr_para_value, str_para_name, str_para_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(result_string, "unknown");
   if (res_para_name != NULL) {
     if (find_json_result_and_single_string_param(
@@ -2044,7 +2044,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_double_string_type(
                        first_param_value, second_param_name,
                        second_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2059,7 +2059,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_tripple_string_type(
                        first_param_value, second_param_name, second_param_value,
                        third_param_name, third_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2072,7 +2072,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_four_string_type(
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val,
                        para2, para2val, para3, para3val, para4, para4val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2085,7 +2085,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_three_string_type(
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val,
                        para2, para2val, para3, para3val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2101,7 +2101,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_tripple_string_get_single_string_type(
                        first_param_value, second_param_name, second_param_value,
                        third_param_name, third_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           fourth_param_name, fourth_param_value) != 0)
@@ -2118,7 +2118,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_triple_int_type(
                        third_param_name, third_param_value, fourth_param_name,
                        fourth_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2132,7 +2132,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_single_int_type(
                        first_param_value, second_param_name,
                        second_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2149,7 +2149,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_double_string_triple_int_type(
                        third_param_name, third_param_value, fourth_param_name,
                        fourth_param_value, fifth_param_name, fifth_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2164,7 +2164,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_four_int_type(
       method_name, req_id++, send_buffer, first_name, first_value, second_name,
       second_value, third_name, third_value, fourth_name, fourth_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2178,7 +2178,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_four_int_type(char *method_name,
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_four_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val) != 0)
@@ -2191,7 +2191,7 @@ ADJsonRpcClient::get_five_string_type_status_error_info(void *Obj) {
   CmdExecutionObj *pCmdObj = (CmdExecutionObj *)Obj;
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_five_string_param_statusErrorInfo(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
@@ -2213,7 +2213,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_four_int_two_string_type(
       second_value, third_name, third_value, fourth_name, fourth_value,
       fifth_name, fifth_value, sixth_name, sixth_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2226,7 +2226,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_with_string_para(
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val,
                        para2, para2val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2241,7 +2241,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_with_five_string_para(
                        para2, para2val, para3, para3val, para4, para4val, para5,
                        para5val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2258,7 +2258,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_with_nine_string_para(
                        para5val, para6, para6val, para7, para7val, para8,
                        para8val, para9, para9val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2271,7 +2271,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_four_int_one_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para6, para6val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_four_int_one_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val, para5,
@@ -2286,7 +2286,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_four_int_two_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para7, para7val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_four_int_two_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val, para5,
@@ -2300,7 +2300,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_single_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para2,
           para2val) != 0)
@@ -2314,7 +2314,7 @@ ADJsonRpcClient::get_two_string_with_string_para(char *method_name, char *para1,
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_two_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val) != 0)
@@ -2327,7 +2327,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_three_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_three_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val) != 0)
@@ -2341,7 +2341,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_two_int_three_double_one_string_type(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_two_int_three_double_one_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val, para5,
@@ -2357,7 +2357,7 @@ ADJsonRpcClient::get_two_int_two_float_one_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_two_int_two_double_one_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para2,
           para2val, para3, para3val, para4, para4val, para5, para5val) != 0)
@@ -2372,7 +2372,7 @@ ADJsonRpcClient::get_two_int_two_float_one_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_two_int_two_float_one_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para2,
           para2val, para3, para3val, para4, para4val, para5, para5val) != 0)
@@ -2387,7 +2387,7 @@ ADJsonRpcClient::get_three_int_type_with_integer_para(void *Obj) {
                        pCmdObj->first_arg_param_name,
                        pCmdObj->first_arg_param_int_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_three_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, &pCmdObj->first_arg_param_int_value,
@@ -2410,7 +2410,7 @@ ADJsonRpcClient::get_two_string_eight_int_type_with_three_int_two_string_para(
       pCmdObj->fourth_arg_param_name, pCmdObj->fourth_arg_param_value,
       pCmdObj->fifth_arg_param_name, pCmdObj->fifth_arg_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_two_string_eight_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
@@ -2432,7 +2432,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_two_int_type_max_min_brightness(void *Obj) {
   CmdExecutionObj *pCmdObj = (CmdExecutionObj *)Obj;
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_two_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           (char *)"max_brightness", &pCmdObj->first_arg_param_int_value,
@@ -2445,7 +2445,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_six_int_type(void *Obj) {
   CmdExecutionObj *pCmdObj = (CmdExecutionObj *)Obj;
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_six_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, &pCmdObj->first_arg_param_int_value,
@@ -2463,7 +2463,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_seven_int_type_native_params(void *Obj) {
   CmdExecutionObj *pCmdObj = (CmdExecutionObj *)Obj;
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_seven_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           (char *)"backlight", &pCmdObj->first_arg_param_int_value,
@@ -2481,7 +2481,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_three_double_type(void *Obj) {
   CmdExecutionObj *pCmdObj = (CmdExecutionObj *)Obj;
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_three_double_delta_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, &pCmdObj->first_arg_param_double_value,
@@ -2500,7 +2500,7 @@ ADJsonRpcClient::get_three_double_type_with_string_para(void *Obj) {
                        pCmdObj->first_arg_param_name,
                        pCmdObj->first_arg_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_three_double_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, &pCmdObj->first_arg_param_double_value,
@@ -2516,7 +2516,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_nine_double_type(void *Obj) {
   CmdExecutionObj *pCmdObj = (CmdExecutionObj *)Obj;
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_nine_double_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, &pCmdObj->first_arg_param_double_value,
@@ -2542,7 +2542,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_three_string_nine_double_type(void *Obj) {
   printf("client2\n");
   prepare_json_request(pCmdObj->get_rpc_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result_and_three_string_nine_double_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
@@ -2585,7 +2585,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_three_string_nine_double_type(void *Obj) {
       pCmdObj->twelfth_arg_param_double_value);
   printf("sendBuffer=%s\n", send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2604,7 +2604,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_seven_int_type(void *Obj) {
       pCmdObj->sixth_arg_param_name, pCmdObj->sixth_arg_param_int_value,
       pCmdObj->seventh_arg_param_name, pCmdObj->seventh_arg_param_int_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2626,7 +2626,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_int_nine_double_type(void *Obj) {
       pCmdObj->ninth_arg_param_name, pCmdObj->ninth_arg_param_double_value,
       pCmdObj->tenth_arg_param_name, pCmdObj->tenth_arg_param_double_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 8000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 8000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2641,7 +2641,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_two_int_two_string_type(
       method_name, req_id++, send_buffer, first_name, first_value, second_name,
       second_value, third_name, third_value, fourth_name, fourth_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2655,7 +2655,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_three_double_type(
                                     first_name, first_value, second_name,
                                     second_value, third_name, third_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2670,7 +2670,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_two_int_one_double_one_string_type(
       method_name, req_id++, send_buffer, first_name, first_value, second_name,
       second_value, third_name, third_value, fourth_name, fourth_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2682,7 +2682,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_two_int_two_string_type(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_two_int_two_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val) != 0)
@@ -2697,7 +2697,7 @@ ADJsonRpcClient::get_two_string_eight_int_type_with_integer_para(void *Obj) {
                        pCmdObj->first_arg_param_name,
                        pCmdObj->first_arg_param_int_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 80000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 80000);
   if (find_json_result_and_two_string_eight_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           pCmdObj->first_arg_param_name, pCmdObj->first_arg_param_value,
@@ -2720,7 +2720,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_three_string_with_one_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_three_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para2,
           para2val, para3, para3val, para4, para4val) != 0)
@@ -2733,7 +2733,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_three_string_type(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_three_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val) != 0)
@@ -2746,7 +2746,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_four_string_type(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_four_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val) != 0)
@@ -2761,7 +2761,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_one_string_three_int_type(
       method_name, req_id++, send_buffer, strname, strval, int1name, int1val,
       int2name, int2val, int3name, int3val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2773,7 +2773,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_one_string_three_int_type(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_one_string_three_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val, para3, para3val, para4, para4val) != 0)
@@ -2788,7 +2788,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_one_string_one_int_type(char *method_name,
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_one_string_one_int_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para1,
           para1val, para2, para2val) != 0)
@@ -2804,7 +2804,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_double_string_get_single_string_type(
                        first_param_value, second_param_name,
                        second_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           third_para_name, third_para_val) != 0)
@@ -2817,7 +2817,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_type(
   prepare_json_request(method_name, req_id++, send_buffer, method_param_name,
                        method_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2830,7 +2830,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_single_string_get_single_string_type(
   prepare_json_request(method_name, req_id++, send_buffer, method_param_name,
                        method_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           ret_para_name, ret_para_val) != 0)
@@ -2846,7 +2846,7 @@ ADJsonRpcClient::set_single_string_get_single_string_type_with_addr_para(
   prepare_json_request(method_name, req_id++, send_buffer, addr_para_name,
                        addr_para_value, method_param_name, method_param_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           ret_para_name, ret_para_val) != 0)
@@ -2857,7 +2857,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_action_noarg_type(char *method_name) {
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0) {
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2869,7 +2869,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_action_noarg_get_single_string_type(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
           ret_para_name, ret_para_val) != 0)
@@ -2882,7 +2882,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_string_type(char *method_name,
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   sprintf(param_value, "NotFound");
   if (find_json_result_and_single_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string,
@@ -2902,7 +2902,7 @@ RPC_SRV_RESULT ADJsonRpcClient::set_three_ulong_type(
                        first_value, second_name, second_value, third_name,
                        third_value);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result(recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM,
                        result_string) != 0)
     return RPC_SRV_RESULT_UNKNOWN;
@@ -2936,7 +2936,7 @@ RPC_SRV_RESULT ADJsonRpcClient::get_six_int_one_string_with_string_para(
   char result_string[255];
   prepare_json_request(method_name, req_id++, send_buffer, para1, para1val);
   ClientSocket.send_data(send_buffer);
-  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
+  ClientSocket.receive_json_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   if (find_json_result_and_six_int_one_string_param(
           recv_buffer, (char *)RPC_NAME_ARG_RESULT_PARAM, result_string, para2,
           para2val, para3, para3val, para4, para4val, para5, para5val, para6,
