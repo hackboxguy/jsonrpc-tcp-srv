@@ -386,10 +386,7 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
                                     JSON_RPC_ERR_PARSE_ERROR, req_obj->cltid);
     return -1;
   }
-  if (check_jsonrpc_2_0(new_obj) == 0)
-    ;
-  else
-    ;
+  // a missing or wrong "jsonrpc" member is tolerated for old clients
   if (get_jsonrpc_id(new_obj, &json_req_id) != 0) {
     if (socketlog)
       printf("%s-->%s\n", get_timestamp(), json_string);

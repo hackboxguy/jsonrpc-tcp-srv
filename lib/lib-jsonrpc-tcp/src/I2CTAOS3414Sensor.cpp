@@ -158,13 +158,9 @@ RPC_SRV_RESULT I2CTAOS3414Sensor::calculateCoordinate() {
   double X;
   double Y;
   double Z;
-  double x;
-  double y;
   X = (-0.14282) * red_ + (1.54924) * green_ + (-0.95641) * blue_;
   Y = (-0.32466) * red_ + (1.57837) * green_ + (-0.73191) * blue_;
   Z = (-0.68202) * red_ + (0.77073) * green_ + (0.563320) * blue_;
-  x = X / (X + Y + Z);
-  y = Y / (X + Y + Z);
   if ((X > 0) && (Y > 0) && (Z > 0)) {
     return RPC_SRV_RESULT_SUCCESS;
   } else

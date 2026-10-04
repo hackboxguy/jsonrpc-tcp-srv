@@ -44,7 +44,6 @@ public:
   bool operator()(EventEntry *pEntry) {
     if (srv_token == pEntry->srvToken) {
       delete pEntry;
-      pEntry = NULL;
       return true;
     }
     return false;
@@ -55,7 +54,6 @@ public:
   bool operator()(EventEntry *pEntry) {
     if (pEntry->deleteFlag == true) {
       delete pEntry;
-      pEntry = NULL;
       return true;
     }
     return false;

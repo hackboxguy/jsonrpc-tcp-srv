@@ -46,11 +46,9 @@ RPC_SRV_RESULT ADSonOffHttpClient::get_sonoff_state(SONOFF_STATE &state) {
           "GET /cm?cmnd=Power%%20 HTTP/1.1\r\n Host:%s\r\n\r\n",
           ClientSocket.get_ip_addr().c_str());
   ClientSocket.send_data(send_buffer);
-  int received = ClientSocket.receive_data_blocking(recv_buffer,
-                                                    sizeof(recv_buffer), 4000);
+  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   recv_buffer[100] = '\0';
-  received = ClientSocket.receive_data_blocking(recv_buffer,
-                                                sizeof(recv_buffer), 4000);
+  ClientSocket.receive_data_blocking(recv_buffer, sizeof(recv_buffer), 4000);
   recv_buffer[100] = '\0';
   std::string msg = recv_buffer;
   std::string arg1, arg2, arg3, arg4, arg5, arg6;

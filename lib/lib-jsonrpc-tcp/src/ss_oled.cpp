@@ -1752,7 +1752,7 @@ int oledScaledString(SSOLED *pOLED, int x, int y, char *szMsg, int iSize,
   const uint8_t *s;
   uint8_t ucTemp[16];
   int tx, ty, bit, iFontOff;
-  int iPitch, iOffset;
+  int iPitch;
   int iFontWidth;
   if (iXScale == 0 || iYScale == 0 || szMsg == NULL || pOLED == NULL ||
       pOLED->ucScreen == NULL || x < 0 || y < 0 || x >= pOLED->oled_x - 1 ||

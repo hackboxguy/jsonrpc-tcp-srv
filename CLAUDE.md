@@ -418,6 +418,21 @@ cmake --build Output -- install
 # Located in: utils/tests/
 ```
 
+### Library Unit/Integration Tests (ctest)
+
+```bash
+# default, ASan+UBSan and TSan presets (TSan needs its own build dir)
+cmake -H. -BOut-default -DADLIB_BUILD_TESTS=ON
+cmake -H. -BOut-asan -DADLIB_BUILD_TESTS=ON -DADLIB_SANITIZE=address
+cmake -H. -BOut-tsan -DADLIB_BUILD_TESTS=ON -DADLIB_SANITIZE=thread
+cmake --build Out-asan -j$(nproc) && ctest --test-dir Out-asan --output-on-failure
+
+# -DADLIB_STRICT_WARNINGS=ON: -Wall -Wextra -Wshadow ...; fatal for lib-jsonrpc-tcp
+```
+
+Tests live in `lib/lib-jsonrpc-tcp/tests/` (dependency-free harness `adtest.hpp`,
+in-process servers on ports below the ephemeral range).
+
 ### Manual Testing with tcp-json-rpc-client
 
 ```bash

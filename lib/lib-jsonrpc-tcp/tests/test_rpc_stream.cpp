@@ -135,14 +135,13 @@ TEST_CASE("C8: garbage between requests closes only that connection") {
   send_all(fd, version_request(1) + "garbage" + version_request(2));
   Reader r;
   std::string resp;
-  int got_result = 0, got_parse_error = 0;
+  // request 1 may or may not be answered before the connection is closed
+  int got_parse_error = 0;
   while (r.next_object(fd, resp, 2000)) {
     int id;
     bool res, err;
-    if (parse_response(resp, &id, &res, &err)) {
-      got_result += res;
+    if (parse_response(resp, &id, &res, &err))
       got_parse_error += err;
-    }
   }
   CHECK_EQ(got_parse_error, 1);
   CHECK(server_alive(server()->port));

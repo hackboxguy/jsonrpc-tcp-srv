@@ -299,7 +299,7 @@ int ADSerial::process_received_data(unsigned char *data, int len) {
   rx_data_proc_thread.wakeup_thread();
   return 0;
 }
-int ADSerial::read_serial_data(int fd, unsigned char *buf, int size) {
+int ADSerial::read_serial_data(int serial_fd, unsigned char *buf, int size) {
   int n;
 #ifndef __STRICT_ANSI__
   if (size > INT_MAX)
@@ -308,10 +308,11 @@ int ADSerial::read_serial_data(int fd, unsigned char *buf, int size) {
   if (size > MAX_RX_TX_CHUNK_SZ)
     size = MAX_RX_TX_CHUNK_SZ;
 #endif
-  n = read(fd, buf, size);
+  n = read(serial_fd, buf, size);
   return n;
 }
-int ADSerial::write_serial_data(int fd, unsigned char *data, int bytesToSend) {
+int ADSerial::write_serial_data(int serial_fd, unsigned char *data,
+                                int bytesToSend) {
   int writtenBytes = 0;
   int lastBytesWritten = 0;
   if (uartlog) {
@@ -324,11 +325,11 @@ int ADSerial::write_serial_data(int fd, unsigned char *data, int bytesToSend) {
       printf("%02X ", data[j]);
     printf("\n");
   }
-  tcflush(fd, TCIOFLUSH);
+  tcflush(serial_fd, TCIOFLUSH);
   transmission_in_progress = 1;
   while (writtenBytes < bytesToSend) {
     lastBytesWritten =
-        write(fd, data + writtenBytes, bytesToSend - writtenBytes);
+        write(serial_fd, data + writtenBytes, bytesToSend - writtenBytes);
     writtenBytes += lastBytesWritten;
     if (lastBytesWritten < 0) {
       printf("write failed!\n");

@@ -49,9 +49,9 @@ ADSettings::~ADSettings() {
   if (settings != NULL)
     settings_delete(settings);
 }
-int ADSettings::Is_it_valid_file(char *filepath) {
+int ADSettings::Is_it_valid_file(char *path) {
   struct stat buffer;
-  if (stat(filepath, &buffer) != 0)
+  if (stat(path, &buffer) != 0)
     return -1;
   if (buffer.st_mode & S_IFREG)
     return 0;
@@ -406,10 +406,10 @@ int ADSettings::Store() {
     case ESETTINGS_KEY_TYPE_INT_ARR: {
       int *val = ((int *)pEntry->value);
       int *localval = ((int *)pEntryLocal->value);
-      int len = pEntry->value_size / sizeof(int);
+      int arr_len = pEntry->value_size / sizeof(int);
       value[0] = '\0';
-      for (int i = 0; i < len; i++) {
-        if (i == (len - 1))
+      for (int k = 0; k < arr_len; k++) {
+        if (k == (arr_len - 1))
           sprintf(temp_arr, "%d", *val);
         else
           sprintf(temp_arr, "%d, ", *val);
@@ -432,10 +432,10 @@ int ADSettings::Store() {
     case ESETTINGS_KEY_TYPE_LONG_ARR: {
       long *val = ((long *)pEntry->value);
       long *localval = ((long *)pEntryLocal->value);
-      int len = pEntry->value_size / sizeof(long);
+      int arr_len = pEntry->value_size / sizeof(long);
       value[0] = '\0';
-      for (int i = 0; i < len; i++) {
-        if (i == (len - 1))
+      for (int k = 0; k < arr_len; k++) {
+        if (k == (arr_len - 1))
           sprintf(temp_arr, "%ld", *val);
         else
           sprintf(temp_arr, "%ld, ", *val);
@@ -458,10 +458,10 @@ int ADSettings::Store() {
     case ESETTINGS_KEY_TYPE_DOUBLE_ARR: {
       double *val = ((double *)pEntry->value);
       double *localval = ((double *)pEntryLocal->value);
-      int len = pEntry->value_size / sizeof(double);
+      int arr_len = pEntry->value_size / sizeof(double);
       value[0] = '\0';
-      for (int i = 0; i < len; i++) {
-        if (i == (len - 1))
+      for (int k = 0; k < arr_len; k++) {
+        if (k == (arr_len - 1))
           sprintf(temp_arr, "%E", *val);
         else
           sprintf(temp_arr, "%E, ", *val);

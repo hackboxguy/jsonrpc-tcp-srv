@@ -44,6 +44,11 @@ target_compile_features(${ADCMN_LIBNAME} PUBLIC cxx_std_11)
 find_package(Threads REQUIRED)
 target_link_libraries(${ADCMN_LIBNAME} PUBLIC Threads::Threads)
 
+# the library itself builds warning-free with the strict set: keep it so
+if(ADLIB_STRICT_WARNINGS)
+    target_compile_options(${ADCMN_LIBNAME} PRIVATE -Werror)
+endif()
+
 if(ADLIB_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

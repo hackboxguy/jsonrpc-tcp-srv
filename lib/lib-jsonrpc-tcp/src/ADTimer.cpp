@@ -49,7 +49,8 @@ int ADTimer::install_forwarder(int sig) {
   sigemptyset(&sa.sa_mask);
   return sigaction(sig, &sa, NULL);
 }
-ADTimer::ADTimer() : millisec_time(100), passive_mode(true) {
+ADTimer::ADTimer()
+    : millisec_time(100), passive_mode(true), timer_tick_pending(0) {
   custom_sig_chain.set_element_deleter(
       &chain_delete_object<ADTIMER_CUSTOM_SIG>);
   SigInfoChain.set_element_deleter(&chain_delete_object<ADTIMER_CUSTOM_SIG>);
@@ -57,6 +58,7 @@ ADTimer::ADTimer() : millisec_time(100), passive_mode(true) {
 ADTimer::ADTimer(int timer_millisec, int port) {
   notifyPortNum = port;
   passive_mode = false;
+  timer_tick_pending = 0;
   __atomic_store_n(&waiter_tid, current_tid(), __ATOMIC_SEQ_CST);
   const int forwarded[] = {SIGINT, SIGTERM, SIGQUIT, SIGHUP, SIGALRM, SIGIO};
   for (size_t i = 0; i < sizeof(forwarded) / sizeof(forwarded[0]); i++)
@@ -191,12 +193,14 @@ int ADTimer::wait_for_exit_signal() {
       notify_sigio_to_subscribers();
       break;
     case SIGALRM:
-      if (__atomic_load_n(&stoptimer, __ATOMIC_SEQ_CST) != 1)
+      // a slow timer_notification() must not make ticks pile up and fire
+      // in bursts: only wake the timer thread if no tick is pending
+      if (__atomic_load_n(&stoptimer, __ATOMIC_SEQ_CST) != 1 &&
+          __atomic_exchange_n(&timer_tick_pending, 1, __ATOMIC_SEQ_CST) == 0)
         TimerThread.wakeup_thread();
       break;
     default:
-      if (notify_registered_signals(sig, &info) != 0)
-        ;
+      notify_registered_signals(sig, &info); // unregistered: ignored
       break;
     }
   }
@@ -292,6 +296,7 @@ int ADTimer::monoshot_callback_function(void *pUserData,
                                         ADThreadProducer *pObj) {
   int call_from = pObj->getID();
   if (call_from == TimerThreadID) {
+    __atomic_store_n(&timer_tick_pending, 0, __ATOMIC_SEQ_CST);
     pTmpTimer->notify_subscribers();
   } else if (call_from == CustomSigThreadID) {
     ADTIMER_CUSTOM_SIG *pSigReg = NULL;

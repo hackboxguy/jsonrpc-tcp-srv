@@ -80,6 +80,7 @@ private:
   int push_custom_sig_registration(int sig);
   int notify_registered_signals(int sig, siginfo_t *info);
   ADThread TimerThread, CustomSigThread;
+  int timer_tick_pending; // coalesces SIGALRM ticks (finding M4)
   int TimerThreadID, CustomSigThreadID;
   ADGenericChain SigInfoChain;
   virtual int monoshot_callback_function(void *pUserData,

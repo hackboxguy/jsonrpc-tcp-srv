@@ -6,6 +6,13 @@ using namespace std;
 #define AD_NETWORK_TRUE 1
 #define AD_NETWORK_FALSE 0
 int ADNetProducer::IDGenerator = 0;
+static bool would_block(int err) {
+#if EAGAIN != EWOULDBLOCK
+  if (err == EWOULDBLOCK)
+    return true;
+#endif
+  return err == EAGAIN;
+}
 int ADNetServer::identify_chain_element(void *element, int ident,
                                         ADChainProducer *pObj) {
   net_data_obj *pPtr;
@@ -68,7 +75,7 @@ int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
     }
     if (rc < 0 && errno == EINTR)
       continue;
-    if (rc < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+    if (rc < 0 && !would_block(errno))
       return -1;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     long left = deadline - (ts.tv_sec * 1000L + ts.tv_nsec / 1000000L);
@@ -85,9 +92,9 @@ int ADNetServer::send_with_deadline(int fd, const char *buf, int len) {
 }
 bool ADNetServer::IsConnectionAlive(int sock_descriptor) {
   socklen_t len;
-  struct sockaddr_storage addr;
-  len = sizeof addr;
-  if (getpeername(sock_descriptor, (struct sockaddr *)&addr, &len) == 0) {
+  struct sockaddr_storage peer;
+  len = sizeof peer;
+  if (getpeername(sock_descriptor, (struct sockaddr *)&peer, &len) == 0) {
     return true;
   } else {
     return false;
@@ -158,7 +165,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
             if (new_sd < 0) {
               if (errno == EINTR || errno == ECONNABORTED)
                 continue; // retry
-              if (errno != EWOULDBLOCK && errno != EAGAIN) {
+              if (!would_block(errno)) {
                 // EMFILE/ENFILE/ENOBUFS/ENOMEM: transient, keep serving
                 LOG_ERR_MSG_WITH_ARG("libadav:ADNetServer",
                                      "accept() failed errno=%d", errno);
@@ -197,7 +204,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
             if (rc < 0) {
               if (errno == EINTR)
                 continue;
-              if (errno != EWOULDBLOCK && errno != EAGAIN) {
+              if (!would_block(errno)) {
                 close_conn = AD_NETWORK_TRUE;
               }
               break;

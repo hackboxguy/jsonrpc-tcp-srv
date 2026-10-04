@@ -188,7 +188,7 @@ void I2CPcfLcd::clear_display_internal(DISPLAY_LINE line) {
 void I2CPcfLcd::print_center(DISPLAY_LINE line, char *string) {
   int indx = 0;
   int len = 0;
-  if (strlen(string) > DISPLAY_TYPE)
+  if ((int)strlen(string) > DISPLAY_TYPE)
     len = DISPLAY_TYPE;
   else
     len = strlen(string);

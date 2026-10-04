@@ -854,7 +854,7 @@ int ADCmdlineHelper::get_dev_info(ADCMN_DEV_INFO *pInfo) {
   pInfo->BoardType = DeviceInfo.BoardType;
   return 0;
 }
-int ADCmdlineHelper::grep_ip_line(char *ip_filepath, int line, char *ip) {
+int ADCmdlineHelper::grep_ip_line(char *ip_filepath, int line, char *ip_out) {
   char command[1024];
   char temp_str[256];
   sprintf(command, "sed '%d,%d!d' %s", line, line, ip_filepath);
@@ -869,7 +869,7 @@ int ADCmdlineHelper::grep_ip_line(char *ip_filepath, int line, char *ip) {
   if (temp_str[strlen(temp_str) - 1] == '\n')
     temp_str[strlen(temp_str) - 1] = '\0';
   temp_str[255] = '\0';
-  strcpy(ip, temp_str);
+  strcpy(ip_out, temp_str);
   pclose(shell);
   return 0;
 }
@@ -892,22 +892,22 @@ int ADCmdlineHelper::count_total_ip_from_file(char *ip_filepath) {
   return count;
 }
 int ADCmdlineHelper::push_ip_to_list_from_file(char *file) {
-  char ip[256];
+  char ip_buf[256];
   int total_ip = count_total_ip_from_file(file);
   for (int i = 0; i < total_ip; i++) {
-    if (grep_ip_line(file, i + 1, ip) == 0)
-      push_ip_to_list(ip);
+    if (grep_ip_line(file, i + 1, ip_buf) == 0)
+      push_ip_to_list(ip_buf);
   }
   return 0;
 }
-int ADCmdlineHelper::push_ip_to_list(char *ip) {
+int ADCmdlineHelper::push_ip_to_list(char *ip_str) {
   IpAddrEntryObj *pIPEntry = NULL;
   OBJECT_MEM_NEW(pIPEntry, IpAddrEntryObj);
   if (pIPEntry == NULL) {
     printf("failed! unable to allocate memory for ipEntry!\n");
     return -1;
   }
-  strcpy(pIPEntry->ip_addr, ip);
+  strcpy(pIPEntry->ip_addr, ip_str);
   if (ipChain.chain_put((void *)pIPEntry) != 0) {
     printf("failed! unable to push ip entry to chain!\n");
     OBJ_MEM_DELETE(pIPEntry);
@@ -947,7 +947,7 @@ int ADCmdlineHelper::run_user_command(CmdExecutionObj *pCmdObj,
                                       ADThreadedSockClientProducer *pWorker) {
   return run_subscribers_commands(pCmdObj, pSrvSockConn, pOutMsgList, pWorker);
 }
-int ADCmdlineHelper::start_new_client_worker(char *ip_addr, int port) {
+int ADCmdlineHelper::start_new_client_worker(char *ip_addr, int srv_port) {
   ADThreadedSockClient *pWorker = NULL;
   OBJECT_MEM_NEW(pWorker, ADThreadedSockClient);
   if (pWorker == NULL) {
@@ -955,7 +955,7 @@ int ADCmdlineHelper::start_new_client_worker(char *ip_addr, int port) {
     return -1;
   }
   pWorker->attach_helper(this);
-  pWorker->run_commands(ip_addr, port, &CmdChain);
+  pWorker->run_commands(ip_addr, srv_port, &CmdChain);
   if (ClientWorkersList.chain_put((void *)pWorker) != 0) {
     printf("failed! unable to push pWorker entry to chain!\n");
     OBJ_MEM_DELETE(pWorker);

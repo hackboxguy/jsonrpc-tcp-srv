@@ -76,48 +76,7 @@ bool I2CSsd1306::writeText(std::string text, uint8_t row, uint8_t col) {
   }
   return true;
 }
-RPC_SRV_RESULT I2CSsd1306::init_display() {
-  return init_display_new();
-  bool retval = false;
-  screenBuf_ = new uint8_t[WIDTH * HEIGHT];
-  memset(screenBuf_, 0, (WIDTH * HEIGHT));
-  if (!screenBuf_) {
-    return RPC_SRV_RESULT_MEM_ERROR;
-  }
-  data_ = new uint8_t[TILE_SIZE];
-  memset(data_, 0, TILE_SIZE);
-  if (!data_) {
-    return RPC_SRV_RESULT_MEM_ERROR;
-  }
-  tmp_ = new uint8_t[TILE_SIZE];
-  memset(tmp_, 0, TILE_SIZE);
-  if (!tmp_) {
-    return RPC_SRV_RESULT_MEM_ERROR;
-  }
-  retval &= writeCommand(1, 0xAE);
-  retval &= writeCommand(2, 0xD5, 0x80);
-  retval &= writeCommand(2, 0xA8, 0x3F);
-  retval &= writeCommand(2, 0xD3, 0x00);
-  retval &= writeCommand(1, 0x40);
-  retval &= writeCommand(2, 0x8D, 0x14);
-  retval &= writeCommand(2, 0x20, 0x00);
-  retval &= writeCommand(1, 0xA1);
-  retval &= writeCommand(1, 0xC8);
-  retval &= writeCommand(2, 0xDA, 0x12);
-  retval &= writeCommand(2, 0x81, 0xCF);
-  retval &= writeCommand(2, 0xD9, 0xF1);
-  retval &= writeCommand(2, 0xDB, 0x40);
-  retval &= writeCommand(1, 0xA4);
-  retval &= writeCommand(1, 0xA6);
-  retval &= writeCommand(1, 0x00);
-  retval &= writeCommand(1, 0x10);
-  retval &= writeCommand(1, 0x40);
-  retval &= writeCommand(1, 0xAF);
-  retval &= writeCommand(3, 0x21, 0x00, 0x7F);
-  retval &= writeCommand(3, 0x22, 0x00, 0x07);
-  retval &= writeCommand(1, 0xAF);
-  return RPC_SRV_RESULT_SUCCESS;
-}
+RPC_SRV_RESULT I2CSsd1306::init_display() { return init_display_new(); }
 bool I2CSsd1306::writeCommand(uint8_t bytes, uint8_t byte1) {
   uint8_t data[16];
   data[0] = 0x00;
@@ -248,9 +207,9 @@ RPC_SRV_RESULT I2CSsd1306::init_display_new() {
     iOLEDType = OLED_128x64;
   else
     iOLEDType = OLED_128x32;
-  std::string node(devNode);
-  int position = node.find("i2c-");
-  std::string value = node.substr(position + 4);
+  std::string dev_node(devNode);
+  int position = dev_node.find("i2c-");
+  std::string value = dev_node.substr(position + 4);
   iChannel = std::stoi(value);
   i = oledInit(&ssoled, iOLEDType, iOLEDAddr, bFlip, bInvert, 1, iChannel,
                iOLEDAddr, -1, 400000);

@@ -19,7 +19,11 @@ typedef struct WORK_CMD_TASK_T {
   unsigned char *pWorkData;
 
 public:
-  WORK_CMD_TASK_T() { resp_type = ADLIB_ASYNC_RESP_TYPE_POLL; }
+  WORK_CMD_TASK_T()
+      : taskID(0), percent_complete(0), command(0),
+        taskSts(RPC_SRV_RESULT_NOT_STARTED),
+        done_action(WORK_CMD_AFTER_DONE_PRESERVE),
+        resp_type(ADLIB_ASYNC_RESP_TYPE_POLL), pWorkData(NULL) {}
 } WORK_CMD_TASK;
 typedef struct WORK_CMD_TASK_IN_PROG_T {
   int taskID;

@@ -213,13 +213,9 @@ void inline my_sleep_us(int iDelay) {
                          "nop");
     iDelay--;
   }
-#else
+#elif !defined(_LINUX_)
   if (iDelay > 0)
-#ifdef _LINUX_
-    ;
-#else
     delayMicroseconds(iDelay);
-#endif
 #endif
 }
 #ifndef __AVR_ATtiny85__
@@ -566,7 +562,9 @@ int I2CReadRegister(BBI2C *pI2C, uint8_t iAddr, uint8_t u8Register,
 #endif
 #ifdef _LINUX_
     if (ioctl(pI2C->file_i2c, I2C_SLAVE, iAddr) >= 0) {
-      ssize_t bytesWritten = write(pI2C->file_i2c, &u8Register, 1);
+      if (write(pI2C->file_i2c, &u8Register, 1) != 1) {
+        // the read below fails as well and reports the error
+      }
       i = read(pI2C->file_i2c, pData, iLen);
     }
 #endif

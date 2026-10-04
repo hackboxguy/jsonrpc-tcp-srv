@@ -289,8 +289,9 @@ RPC_SRV_RESULT I2CBusAccess::test_write_byte(char *dev, uint8_t addr,
   }
   uint8_t buff[16];
   buff[0] = data;
-  unsigned int tst = data;
-  int sz = I2C_WRITE(myfd, &tst, 1);
+  // write the byte itself: the first byte of an unsigned int holding 'data'
+  // is 0 on big-endian targets (e.g. MIPS routers)
+  int sz = I2C_WRITE(myfd, buff, 1);
   if (sz != 1) {
     return RPC_SRV_RESULT_FILE_WRITE_ERR;
   }

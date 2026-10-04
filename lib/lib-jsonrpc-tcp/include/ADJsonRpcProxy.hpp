@@ -48,7 +48,9 @@ struct ADJsonRpcCommand {
   ADJsonRpcProducer *pProducer;
 
 public:
-  ADJsonRpcCommand(){};
+  ADJsonRpcCommand() : pParent(NULL), method_index(-1), pProducer(NULL) {
+    method[0] = '\0';
+  };
   ~ADJsonRpcCommand(){};
 };
 class ADJsonRpcProducer {
@@ -103,7 +105,14 @@ struct api_task_obj {
   char custom_result_string[JSON_RPC_METHOD_RESP_MAX_LENGTH];
 
 public:
-  api_task_obj(){};
+  api_task_obj()
+      : ident(0), req_id(0), pNetData(NULL), pRpcMethod(NULL),
+        access(CMD_TASK_ACCESS_SYNC), task_result(CMD_TASK_RESULT_NOT_STARTED),
+        rpc_code(RPC_SRV_RESULT_NOT_STARTED), rpc_action(RPC_SRV_ACT_READ),
+        result_code(0), json_resp_obj(NULL), json_resp_string(NULL),
+        json_resp_string_len(0) {
+    custom_result_string[0] = '\0';
+  };
   ~api_task_obj(){};
 };
 class ADJsonRpcProxy : public ADJsonRpcProducer,

@@ -83,7 +83,12 @@ struct net_data_obj {
   char *data_buffer;
 
 public:
-  net_data_obj() { data_buffer = NULL; };
+  // cltid -1 means 'connection unknown' (responses skip the fd-reuse check)
+  net_data_obj()
+      : ident(0), sock_descriptor(-1), port(-1), cltid(-1), data_buffer_len(0),
+        data_buffer(NULL) {
+    ip[0] = '\0';
+  };
   ~net_data_obj(){};
 };
 class ADNetServer : public ADNetProducer,

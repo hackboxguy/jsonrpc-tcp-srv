@@ -350,7 +350,6 @@ class ADJsonRpcMgr : public ADJsonRpcMgrProducer,
   bool shutdown_support;
   EJSON_RPCGMGR_READY_STATE ServiceReadyFlag;
   bool ServiceDebugFlag;
-  EJSON_RPCGMGR_DEVOP_STATE ServiceOpState;
   virtual int process_json_to_binary(JsonDataCommObj *pReq);
   virtual int process_binary_to_json(JsonDataCommObj *pReq);
   virtual int process_work(JsonDataCommObj *pReq);

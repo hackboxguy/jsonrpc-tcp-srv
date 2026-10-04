@@ -42,7 +42,12 @@ int ADCmnStringProcessor::find_single_param(char *json_string, char *param_name,
     json_object_put(new_obj);
     return -1;
   }
-  snprintf(value, value_size, "%s", json_object_get_string(new_obj2));
+  const char *src = json_object_get_string(new_obj2);
+  size_t n = strlen(src);
+  if (n >= value_size)
+    n = value_size - 1; // truncate, always NUL terminated
+  memcpy(value, src, n);
+  value[n] = '\0';
   json_object_put(new_obj);
   return 0;
 }
@@ -125,7 +130,6 @@ int ADCmnStringProcessor::prepare_result_string(
     RPC_SRV_RESULT result, JsonDataCommObj *pReq, char *name1, int val1,
     char *name2, int val2, char *name3, int val3, char *name4, int val4) {
   char result_string[512];
-  char floatValue_string[512];
   pReq->rpc_code = result;
   convert_server_result_to_string(pReq->rpc_code, result_string);
   pReq->json_resp_obj = json_object_new_object();
