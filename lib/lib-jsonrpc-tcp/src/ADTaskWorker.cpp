@@ -193,7 +193,32 @@ void ADTaskWorker::evict_completed_tasks() {
       OBJ_MEM_DELETE(p);
   }
 }
+bool ADTaskWorker::tasks_pending() {
+  bool busy = work_chain.get_chain_size() > 0;
+  work_inprog_chain.chain_lock();
+  for (int i = 0; !busy; i++) {
+    WORK_CMD_TASK_IN_PROG *p =
+        (WORK_CMD_TASK_IN_PROG *)work_inprog_chain.chain_get_by_index(i);
+    if (p == NULL)
+      break;
+    if (p->taskSts == RPC_SRV_RESULT_IN_PROG)
+      busy = true;
+  }
+  work_inprog_chain.chain_unlock();
+  return busy;
+}
+// Clears the task status records and restarts the task IDs at 1, which
+// clients of reset_task_status rely on. Restarting while a task is queued
+// or running would hand out IDs that are still in use (finding V2-M3):
+// the reset first waits up to ADTASK_WORKER_RESET_WAIT_MS for pending
+// tasks (clients send 'trigger_x' and then 'reset_task_status' back to
+// back) and is refused with RPC_SRV_RESULT_BUSY only if they still run.
 RPC_SRV_RESULT ADTaskWorker::reset_task_id_and_chain() {
+  for (int waited = 0; tasks_pending(); waited += 5) {
+    if (waited >= ADTASK_WORKER_RESET_WAIT_MS)
+      return RPC_SRV_RESULT_BUSY;
+    usleep(5000);
+  }
   work_inprog_chain.chain_empty();
   return RPC_SRV_RESULT_SUCCESS;
 }

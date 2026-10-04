@@ -356,6 +356,7 @@ int ADNetServer::thread_callback_function(void *pUserData,
 ADNetServer::ADNetServer() {
   wake_pipe[0] = wake_pipe[1] = -1;
   pthread_mutex_init(&pending_lock, NULL);
+  pthread_mutex_init(&ctrl_lock, NULL);
   bind_address = htonl(INADDR_ANY);
   socketlog = 0;
   connected = 0;
@@ -367,6 +368,7 @@ ADNetServer::ADNetServer() {
 ADNetServer::ADNetServer(int port) {
   wake_pipe[0] = wake_pipe[1] = -1;
   pthread_mutex_init(&pending_lock, NULL);
+  pthread_mutex_init(&ctrl_lock, NULL);
   bind_address = htonl(INADDR_ANY);
   socketlog = 0;
   connected = 0;
@@ -385,10 +387,13 @@ int ADNetServer::set_bind_address(const char *ip) {
 }
 int ADNetServer::start_listening(int port, int socket_log,
                                  ADLIB_TCP_SOCKET_TYPE socket_type) {
+  pthread_mutex_lock(&ctrl_lock);
   socketlog = socket_log;
   listen_port = port;
   sock_type = socket_type;
-  return start_listening();
+  int rc = start_listening();
+  pthread_mutex_unlock(&ctrl_lock);
+  return rc;
 }
 // logs a start-up failure to syslog (with errno) and stdout
 static int start_failed(const char *what, int fd, int port) {
@@ -442,7 +447,15 @@ int ADNetServer::start_listening() {
   return 0;
 }
 int ADNetServer::stop() { return stop_listening(); }
+// start/stop are serialized by ctrl_lock; they may run on different threads
+// (Stop() vs. destructor, finding V2-M8)
 int ADNetServer::stop_receiving() {
+  pthread_mutex_lock(&ctrl_lock);
+  int rc = stop_receiving_locked();
+  pthread_mutex_unlock(&ctrl_lock);
+  return rc;
+}
+int ADNetServer::stop_receiving_locked() {
   if (connected == 0)
     return 0;
   __atomic_store_n(&end_server, (unsigned char)AD_NETWORK_TRUE,
@@ -455,11 +468,18 @@ int ADNetServer::stop_receiving() {
   return 0;
 }
 int ADNetServer::stop_listening() {
-  if (connected == 0)
+  pthread_mutex_lock(&ctrl_lock);
+  if (connected == 0) {
+    pthread_mutex_unlock(&ctrl_lock);
     return 0;
+  }
   // cooperative stop: input first, then the response sender
-  stop_receiving();
+  stop_receiving_locked();
   response_thread.stop_thread();
+  // connections paused by back-pressure are not in master_set
+  std::set<int> paused(paused_fds);
+  for (std::set<int>::iterator it = paused.begin(); it != paused.end(); ++it)
+    close_connection(*it);
   request_chain.remove_all();
   response_chain.remove_all();
   clientInfo_chain.remove_all();
@@ -472,7 +492,11 @@ int ADNetServer::stop_listening() {
     }
   }
   close(wake_pipe[1]);
+  pthread_mutex_lock(&pending_lock);
+  pending.clear();
+  pthread_mutex_unlock(&pending_lock);
   connected = 0;
+  pthread_mutex_unlock(&ctrl_lock);
   return 0;
 }
 int ADNetServer::initialize_helpers(void) {

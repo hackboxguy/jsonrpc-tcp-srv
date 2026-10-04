@@ -436,7 +436,18 @@ int ADJsonRpcProxy::json_process_request(net_data_obj *req_obj) {
     OBJ_MEM_DELETE(pTaskObj);
     return -1;
   }
-  pTaskObj->pRpcMethod->pParent->rpc_call_notification(pTaskObj);
+  if (pTaskObj->pRpcMethod->pParent->rpc_call_notification(pTaskObj) != 0) {
+    // the handler thread could not take the request (finding V2-M9): do not
+    // leave the task in ReqRespChain without a reply
+    ReqRespChain.chain_remove_by_ident(pTaskObj->ident);
+    pTaskObj->pNetData = NULL; // req_obj is released by the caller
+    OBJ_MEM_DELETE(pTaskObj);
+    json_send_error_response_string(json_req_id, req_obj->sock_descriptor,
+                                    JSON_RPC_ERR_INTERNAL_ERROR,
+                                    req_obj->cltid);
+    json_object_put(new_obj);
+    return -1;
+  }
   json_object_put(new_obj);
   total_req_received++;
   return 0;

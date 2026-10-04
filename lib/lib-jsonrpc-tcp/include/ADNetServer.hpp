@@ -127,6 +127,8 @@ class ADNetServer : public ADNetProducer,
     conn_pending() : count(0), paused(false) {}
   };
   pthread_mutex_t pending_lock;
+  pthread_mutex_t ctrl_lock; // serializes start/stop
+  int stop_receiving_locked();
   std::map<int, conn_pending> pending;
   std::set<int> paused_fds; // listen thread only
   int queue_framed_requests(int socket_descriptor);

@@ -286,6 +286,8 @@ public:
     ListGuard g(&list_lock);
     return rpclist.size();
   }
+  // true once Stop() began; long ProcessWorkAsync() work should poll it
+  bool IsStopping() { return AsyncTaskWorker.stop_requested(); }
   int MapJsonToBinary(JsonDataCommObj *pReq) {
     if ((pReq->cmd_index - EJSON_RPCGMGR_CMD_END) >= get_total_attached_rpcs())
       return -1;
@@ -371,6 +373,7 @@ class ADJsonRpcMgr : public ADJsonRpcMgrProducer,
                      public ADEvntMgrConsumer {
   ADTimer *myTimer;
   bool stopped;
+  pthread_mutex_t stop_lock; // Stop() returns only when everything stopped
   ADJsonRpcProxy Proxy;
   ADJsonRpcMapper JMapper;
   int svnVersion;

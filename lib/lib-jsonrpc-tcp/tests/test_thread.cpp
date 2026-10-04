@@ -154,4 +154,34 @@ TEST_CASE("thread: NOBLOCK cooperative stop via stop_requested()") {
   CHECK(!t.is_running());
 }
 
+namespace {
+class LongCallback : public ADThreadConsumer {
+public:
+  int done;
+  int sleep_s;
+  LongCallback(int s) : done(0), sleep_s(s) {}
+  virtual int monoshot_callback_function(void *, ADThreadProducer *) {
+    sleep(sleep_s); // e.g. a firmware write that must not be interrupted
+    __atomic_store_n(&done, 1, __ATOMIC_SEQ_CST);
+    return 0;
+  }
+  virtual int thread_callback_function(void *, ADThreadProducer *) { return 0; }
+};
+} // namespace
+
+// V2-H2: the old 5 s stop timeout cancelled such a callback half way
+TEST_CASE("V2-H2: a long callback is waited for, never cancelled") {
+  LongCallback c(6);
+  ADThread t(THREAD_TYPE_MONOSHOT, NULL);
+  t.subscribe_thread_callback(&c);
+  t.set_stop_timeout(1000); // logs every second while waiting
+  REQUIRE(t.start_thread() == 0);
+  t.wakeup_thread();
+  usleep(100000);
+  long t0 = now_ms();
+  CHECK(t.stop_thread() == 0);
+  CHECK(now_ms() - t0 >= 5000);
+  CHECK_EQ(__atomic_load_n(&c.done, __ATOMIC_SEQ_CST), 1);
+}
+
 ADTEST_MAIN()

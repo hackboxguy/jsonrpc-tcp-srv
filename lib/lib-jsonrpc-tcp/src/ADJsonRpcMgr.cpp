@@ -3,6 +3,7 @@
 ADJsonRpcMgr::ADJsonRpcMgr(int ver, bool debuglog, ADCMN_DEV_INFO *pDev) {
   myTimer = NULL;
   stopped = false;
+  pthread_mutex_init(&stop_lock, NULL);
   pDevInfo = pDev;
   svnVersion = ver;
   ServiceDebugFlag = debuglog;
@@ -15,16 +16,25 @@ ADJsonRpcMgr::ADJsonRpcMgr(int ver, bool debuglog, ADCMN_DEV_INFO *pDev) {
   shutdown_support = true;
   ServiceReadyFlag = EJSON_RPCGMGR_READY_STATE_NOT_READY;
 }
-ADJsonRpcMgr::~ADJsonRpcMgr() { Stop(); }
+ADJsonRpcMgr::~ADJsonRpcMgr() {
+  Stop();
+  pthread_mutex_destroy(&stop_lock);
+}
 void ADJsonRpcMgr::Stop() {
-  if (stopped)
+  // concurrent callers (e.g. a signal path and the destructor) wait until
+  // the first one has stopped everything
+  pthread_mutex_lock(&stop_lock);
+  if (stopped) {
+    pthread_mutex_unlock(&stop_lock);
     return;
+  }
   stopped = true;
   Proxy.stop_receiving(); // 1. no new requests
   JMapper.stop();         // 2. RPC handlers
   AsyncTaskWorker.stop(); // 3. async tasks
   EventMgr.stop();        // 4. event delivery
   Proxy.stop();           // 5+6. replies and the network response thread
+  pthread_mutex_unlock(&stop_lock);
 }
 // task completion is delivered in-process (no TCP round trip to ourselves)
 void ADJsonRpcMgr::task_worker_event(int evntNum, int evntArg, int evntArg2) {

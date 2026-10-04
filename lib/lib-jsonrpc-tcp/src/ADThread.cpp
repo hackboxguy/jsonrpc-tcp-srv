@@ -15,6 +15,8 @@ static void *thread_function(void *thread_attr) {
 }
 void ADThread::init_common() {
   started = false;
+  finished = 1;
+  stop_timeout_ms = ADTHREAD_STOP_TIMEOUT_MS;
   __atomic_store_n(&thread_state, (int)THREAD_STATE_INACTIVE, __ATOMIC_SEQ_CST);
   pthread_mutex_init(&ctrl_lock, NULL);
   if (sem_init(&one_shot_sema, 0, 0) != 0)
@@ -75,26 +77,36 @@ int ADThread::my_thread_func(int thread_id) {
       break;
     }
   }
+  // last access to this object from the thread: join_thread() waits for it
+  __atomic_store_n(&finished, 1, __ATOMIC_SEQ_CST);
   return 0;
 }
 // joins the thread; cancels it only if it does not finish in time
+// waits for the thread without ever cancelling it (see ADThread.hpp)
 int ADThread::join_thread() {
-  void *status;
   struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  ts.tv_sec += ADTHREAD_STOP_TIMEOUT_MS / 1000;
-  ts.tv_nsec += (ADTHREAD_STOP_TIMEOUT_MS % 1000) * 1000000L;
-  if (ts.tv_nsec >= 1000000000L) {
-    ts.tv_sec++;
-    ts.tv_nsec -= 1000000000L;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  long start = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+  long next_log = start + (stop_timeout_ms > 0 ? stop_timeout_ms : 0);
+  useconds_t pause_us = 50;
+  while (!__atomic_load_n(&finished, __ATOMIC_SEQ_CST)) {
+    usleep(pause_us);
+    if (pause_us < 2000)
+      pause_us *= 2;
+    if (stop_timeout_ms <= 0)
+      continue;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long now = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+    if (now >= next_log) {
+      LOG_ERR_MSG_WITH_ARG("libadav:ADThread",
+                           "thread still busy %ld ms after stop request, "
+                           "waiting for it",
+                           now - start);
+      next_log = now + stop_timeout_ms;
+    }
   }
-  int rc = pthread_timedjoin_np(thread, &status, &ts);
-  if (rc == ETIMEDOUT) {
-    LOG_ERR_MSG("libadav:ADThread",
-                "thread did not stop in time, cancelling it (may leak locks)");
-    pthread_cancel(thread);
-    rc = pthread_join(thread, &status);
-  }
+  void *status;
+  int rc = pthread_join(thread, &status); // returns at once now
   if (rc != 0)
     cout << "unable to stop the thread" << endl;
   return rc;
@@ -116,7 +128,9 @@ int ADThread::start_thread(void) {
   while (sem_trywait(&one_shot_sema) == 0)
     ;
   __atomic_store_n(&thread_state, (int)THREAD_STATE_ACTIVE, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&finished, 0, __ATOMIC_SEQ_CST);
   if (pthread_create(&thread, &attr, thread_function, (void *)this) != 0) {
+    __atomic_store_n(&finished, 1, __ATOMIC_SEQ_CST);
     __atomic_store_n(&thread_state, (int)THREAD_STATE_INACTIVE,
                      __ATOMIC_SEQ_CST);
     pthread_mutex_unlock(&ctrl_lock);

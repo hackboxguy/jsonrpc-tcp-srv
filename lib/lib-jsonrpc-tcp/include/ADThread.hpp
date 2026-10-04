@@ -65,11 +65,18 @@ typedef enum THRD_TYPE_T {
 //   and joins. A callback that is running finishes first.
 // - NOBLOCK: stop_thread() marks the thread inactive and joins. Long running
 //   callbacks must poll stop_requested() (or their own flag) and return.
-// - Only if the join does not finish within ADTHREAD_STOP_TIMEOUT_MS the
-//   thread is cancelled as a last resort (logged loudly).
+// - The thread is never cancelled (finding V2-H2): a cancelled thread can
+//   hold a mutex forever or be killed in the middle of system() (firmware
+//   update). If it has not finished after the stop timeout (default
+//   ADTHREAD_STOP_TIMEOUT_MS, set_stop_timeout()), this is logged and
+//   stop_thread() keeps waiting, logging again after every further period.
+//   A process stuck there can still be ended with a second SIGTERM (the
+//   active ADTimer restores the default action after the first one).
+// - The wait uses CLOCK_MONOTONIC, so clock steps (NTP at boot) do not
+//   shorten or extend it.
 // A thread can be started again after stop_thread() or after its NOBLOCK
 // callback returned.
-#define ADTHREAD_STOP_TIMEOUT_MS 5000
+#define ADTHREAD_STOP_TIMEOUT_MS 10000
 // minimum stack size; musl's default (128 KB) is too small for the reply
 // builders and json-c recursion. Larger platform defaults are kept.
 #define ADTHREAD_MIN_STACK_SIZE (256 * 1024)
@@ -79,6 +86,8 @@ class ADThread : public ADThreadProducer {
   bool init_flag;
   int thread_state; // THRD_STATE, accessed with __atomic builtins
   bool started;     // a pthread exists that has not been joined yet
+  int finished;     // set (atomically) when the thread function returns
+  int stop_timeout_ms;
   pthread_t thread;
   pthread_attr_t attr;
   sem_t one_shot_sema;
@@ -99,5 +108,7 @@ public:
   // true once stop_thread() was called; for NOBLOCK callbacks
   bool stop_requested();
   bool is_running();
+  // period after which a stop_thread() that is still waiting logs an error
+  void set_stop_timeout(int timeout_ms) { stop_timeout_ms = timeout_ms; }
 };
 #endif

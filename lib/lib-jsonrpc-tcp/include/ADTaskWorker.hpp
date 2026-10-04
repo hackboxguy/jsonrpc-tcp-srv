@@ -40,6 +40,8 @@ public:
   virtual void task_worker_event(int evntNum, int evntArg, int evntArg2) = 0;
   virtual ~ADTaskWorkerEventSink() {};
 };
+// reset_task_status waits this long for queued/running tasks (V2-M3)
+#define ADTASK_WORKER_RESET_WAIT_MS 1000
 // completed PRESERVE tasks nobody polls are evicted beyond this (H4)
 #define ADTASK_WORKER_MAX_INPROG_TASKS 256
 class ADTaskWorkerProducer;
@@ -77,6 +79,9 @@ public:
     }
   }
   int getID() { return id; }
+  // true once the worker is being stopped: a long run_work() (firmware
+  // update, download) should poll it and return early (finding V2-H2)
+  virtual bool stop_requested() { return false; }
 };
 class ADTaskWorker : public ADTaskWorkerProducer,
                      public ADChainConsumer,
@@ -88,6 +93,7 @@ class ADTaskWorker : public ADTaskWorkerProducer,
   int work_inprog_chain_id;
   ADTaskWorkerEventSink *pEventSink;
   void evict_completed_tasks();
+  bool tasks_pending();
   virtual int identify_chain_element(void *element, int ident,
                                      ADChainProducer *pObj);
   virtual int double_identify_chain_element(void *element, int ident1,
@@ -105,7 +111,10 @@ class ADTaskWorker : public ADTaskWorkerProducer,
 public:
   ADTaskWorker();
   ~ADTaskWorker();
-  void stop(); // stops the worker thread; idempotent
+  // stops the worker thread; idempotent. A running task is never
+  // interrupted: stop() waits for it (run_work can poll stop_requested()).
+  void stop();
+  virtual bool stop_requested() { return work_thread.stop_requested(); }
   void set_event_sink(ADTaskWorkerEventSink *pSink) { pEventSink = pSink; }
   int notifyPortNum;
   RPC_SRV_RESULT get_task_status(int taskID, int *taskSts, char *errMsg);

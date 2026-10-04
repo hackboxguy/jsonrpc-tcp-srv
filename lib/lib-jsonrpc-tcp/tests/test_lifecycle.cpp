@@ -3,6 +3,7 @@
 #include "adtest.hpp"
 #include "test_net_util.hpp"
 #include <pthread.h>
+#include <set>
 #include <vector>
 
 using namespace testnet;
@@ -253,9 +254,9 @@ TEST_CASE("H4: status is in progress while running, reset while running") {
   char msg[255];
   tw.get_task_status(id, &sts, msg);
   CHECK_EQ(sts, (int)RPC_SRV_RESULT_IN_PROG);
+  // waits for the 100 ms task, then resets (V2-M3)
   CHECK(tw.reset_task_id_and_chain() == RPC_SRV_RESULT_SUCCESS);
   REQUIRE(wait_ran(w, 1));
-  usleep(10000);
   tw.get_task_status(id, &sts, msg);
   CHECK_EQ(sts, (int)RPC_SRV_RESULT_TASK_ID_NOT_FOUND);
 }
@@ -280,6 +281,116 @@ TEST_CASE("H4: unpolled finished tasks are capped") {
   CHECK_EQ(sts, (int)RPC_SRV_RESULT_TASK_ID_NOT_FOUND);
   tw.get_task_status(ids[299], &sts, msg); // newest: still there
   CHECK_EQ(sts, (int)RPC_SRV_RESULT_SUCCESS);
+}
+
+namespace {
+// a long task; with poll_stop it returns early once a stop is requested
+class LongWorker : public ADTaskWorkerConsumer {
+public:
+  int finished;
+  bool poll_stop;
+  LongWorker(bool poll) : finished(0), poll_stop(poll) {}
+  virtual RPC_SRV_RESULT run_work(int cmd, unsigned char *pWorkData,
+                                  ADTaskWorkerProducer *pTaskWorker) {
+    for (int i = 0; i < 600; i++) { // 6 s
+      if (poll_stop && pTaskWorker->stop_requested())
+        break;
+      usleep(10000);
+    }
+    __atomic_store_n(&finished, 1, __ATOMIC_SEQ_CST);
+    return RPC_SRV_RESULT_SUCCESS;
+  }
+};
+} // namespace
+
+// V2-H2: stopping during a firmware update used to cancel it after 5 s
+TEST_CASE("V2-H2: stop during a 6 s task waits for it") {
+  LongWorker w(false);
+  ADTaskWorker tw;
+  tw.attach_helper(&w);
+  int id;
+  REQUIRE(tw.push_task(1, NULL, &id) == 0);
+  usleep(100000);
+  tw.stop();
+  CHECK_EQ(__atomic_load_n(&w.finished, __ATOMIC_SEQ_CST), 1);
+}
+
+TEST_CASE("V2-H2: a task that polls stop_requested() ends quickly") {
+  LongWorker w(true);
+  ADTaskWorker tw;
+  tw.attach_helper(&w);
+  int id;
+  REQUIRE(tw.push_task(1, NULL, &id) == 0);
+  usleep(100000);
+  long t0 = now_ms();
+  tw.stop();
+  CHECK(now_ms() - t0 < 1000);
+  CHECK_EQ(__atomic_load_n(&w.finished, __ATOMIC_SEQ_CST), 1);
+}
+
+// V2-M3: reset_task_status used to restart the IDs at 1 while tasks were
+// still queued, so new tasks got the IDs of pending ones. It now refuses
+// while busy and still restarts at 1 when idle (clients rely on that).
+TEST_CASE("V2-M3: reset_task_status is refused while tasks are pending") {
+  Worker w;
+  w.sleep_us = 300000; // 5 tasks x 300 ms: longer than the reset waits
+  ADTaskWorker tw;
+  tw.attach_helper(&w);
+  tw.set_event_sink(&w);
+  std::set<int> ids;
+  for (int i = 0; i < 5; i++) {
+    int id;
+    REQUIRE(tw.push_task(0, NULL, &id) == 0);
+    ids.insert(id);
+  }
+  CHECK(tw.reset_task_id_and_chain() == RPC_SRV_RESULT_BUSY);
+  for (int i = 0; i < 5; i++) {
+    int id;
+    REQUIRE(tw.push_task(0, NULL, &id) == 0);
+    CHECK(ids.count(id) == 0);
+    ids.insert(id);
+  }
+  CHECK(wait_ran(w, 10, 10000));
+  CHECK(tw.reset_task_id_and_chain() == RPC_SRV_RESULT_SUCCESS);
+  int id = -1;
+  REQUIRE(tw.push_task(0, NULL, &id) == 0);
+  CHECK_EQ(id, 1); // IDs restart when idle
+  CHECK(wait_ran(w, 11));
+}
+
+TEST_CASE("V2-M3: reset right after a short task waits for it") {
+  Worker w;
+  w.sleep_us = 100000;
+  ADTaskWorker tw;
+  tw.attach_helper(&w);
+  tw.set_event_sink(&w);
+  int id = -1;
+  REQUIRE(tw.push_task(0, NULL, &id) == 0);
+  CHECK(tw.reset_task_id_and_chain() == RPC_SRV_RESULT_SUCCESS);
+  REQUIRE(tw.push_task(0, NULL, &id) == 0);
+  CHECK_EQ(id, 1);
+  CHECK(wait_ran(w, 2));
+}
+
+// V2-M8: a second start leaked the socket and threads; Stop() and the
+// destructor may run on different threads
+TEST_CASE("V2-M8: second Start() fails, concurrent Stop() is safe") {
+  ADJsonRpcMgr *mgr = new ADJsonRpcMgr(1, false, NULL);
+  REQUIRE(mgr->Start(test_port(3), 0, 0) == 0);
+  CHECK(mgr->Start(test_port(3), 0, 0) != 0);
+  CHECK(server_alive(test_port(3)));
+  pthread_t th[4];
+  for (int i = 0; i < 4; i++)
+    pthread_create(
+        &th[i], NULL,
+        [](void *p) -> void * {
+          ((ADJsonRpcMgr *)p)->Stop();
+          return NULL;
+        },
+        mgr);
+  for (int i = 0; i < 4; i++)
+    pthread_join(th[i], NULL);
+  delete mgr;
 }
 
 TEST_CASE("H4: destroy the worker with pending tasks") {
